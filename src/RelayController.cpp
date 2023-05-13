@@ -100,6 +100,10 @@ void RelayController::settingsChanged() {
         const RelaySettings &relaySettings = settings.getRelaySettingsRef(i);
         const PinSettings &setPinSettings = relaySettings.getSetPinSettings();
         if (setPinSettings.isEnabled()) {
+            //TODO remove afterd debug
+            if (setPinSettings.getPin() < 10 || setPinSettings.getPin() > 13) {
+                pinMode(setPinSettings.getPin(), OUTPUT);
+            }
             pinMode(setPinSettings.getPin(), OUTPUT);
         }
         const PinSettings &monitorPinSettings = relaySettings.getMonitorPinSettings();

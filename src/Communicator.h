@@ -27,7 +27,7 @@ enum ErrorCode {
 
 };
 
-static const int MAX_COMMAND_READ_TIME = 100;
+static const int MAX_COMMAND_READ_TIME = 50;
 
 class Communicator {
 public:
@@ -38,8 +38,10 @@ private:
     Settings &settings;
     RelayController &relayController;
     uint8_t cmdBuff[CMD_BUFF_SIZE];
-    uint8_t curCmdBuffPos = 0;
+    uint8_t cmdBuffSize = 0;
+    uint8_t cmdBuffCurrPos = 0;
     bool commandParsed = false;
+    bool commandPocessed = false;
     uint32_t lastPacketTime = 0;
     uint8_t lastPacketSize = 0;
 
@@ -47,17 +49,26 @@ private:
     void processBinaryInstruction();
     ErrorCode processBinaryRead();
     ErrorCode processBinarySet();
-    ErrorCode processBinaryExecute();
-    void sendSettings();
+    void sendSettings(bool addResultCode = false);
     ErrorCode saveSettings();
-    ErrorCode sendRelayState();
+    ErrorCode sendState(bool addResultCode = false);
+    ErrorCode saveState();
+    ErrorCode sendId(bool addResultCode = false);
+    ErrorCode saveId();
+    ErrorCode sendAll(bool addResultCode = false);
+    ErrorCode saveAll();
+    ErrorCode sendRelayState(bool addResultCode = false);
+    ErrorCode saveRelayState();
+    ErrorCode sendRelayDisabledTemp(bool addResultCode = false);
+    ErrorCode saveRelayDisabledTemp();
+    ErrorCode sendRelaySwitchedOn(bool addResultCode = false);
+    ErrorCode saveRelaySwitchedOn();
+    ErrorCode sendRelayMonitorOn(bool addResultCode = false);
+    ErrorCode sendRelayControlOn(bool addResultCode);
+    ErrorCode readRelayIndexFromCmdBuff(uint8_t *string);
+    ErrorCode readUint8FromCmdBuff(uint8_t *result);
     uint8_t readRelayStateBits(uint8_t relayIndex);
 
-    ErrorCode sendState();
-
-    ErrorCode saveState();
-
-    ErrorCode saveRelayState();
 };
 
 

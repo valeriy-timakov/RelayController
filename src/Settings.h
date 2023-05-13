@@ -126,7 +126,7 @@ public:
     const RelaySettings& getRelaySettingsRef(uint8_t relayIdx) const;
     uint32_t getControllerId() const;
     bool isReady() const;
-    void saveRelaysCount(uint8_t value);
+    bool saveRelaysCount(uint8_t value);
     void saveControlInterruptPin(uint8_t controlInterruptPin);
     void saveRelaySettings(uint8_t relayIdx, uint8_t setPinSettingsRaw, uint8_t monitorPinSettingsRaw, uint8_t controlPinSettingsRaw);
     void saveControllerId(uint32_t controllerId);

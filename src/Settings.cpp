@@ -19,7 +19,10 @@ void Settings::load() {
     ready = true;
 }
 
-void Settings::saveRelaysCount(uint8_t value) {
+bool Settings::saveRelaysCount(uint8_t value) {
+    if (relaysCount > MAX_RELAYS_COUNT) {
+        return false;
+    }
     relaysCount = value;
     EEPROM.update(RELAYS_COUNT_LOCATION, relaysCount);
 }
