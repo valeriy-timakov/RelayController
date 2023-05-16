@@ -44,7 +44,7 @@ void RelayController::setControlTemporaryDisabled(uint8_t relayIdx, bool disable
 
 
 bool checkPinState(const PinSettings &pinSettings) {
-    if (pinSettings.isEnabled()) {
+    if (pinSettings.isEnabled() && pinSettings.isAllowedPin()) {
         bool high = digitalRead(pinSettings.getPin()) == HIGH;
         return pinSettings.isInversed() == !high;
     }
@@ -53,10 +53,12 @@ bool checkPinState(const PinSettings &pinSettings) {
 
 void setRelayState_(const RelaySettings &relaySettings, bool swithedOn, uint8_t relayIdx) {
     const PinSettings &setPinSettings = relaySettings.getSetPinSettings();
-    if (setPinSettings.isEnabled()) {
-        digitalWrite(setPinSettings.getPin(), setPinSettings.isInversed() == !swithedOn ? HIGH : LOW);
+    if (setPinSettings.isAllowedPin()) {
+        if (setPinSettings.isEnabled()) {
+            digitalWrite(setPinSettings.getPin(), setPinSettings.isInversed() == !swithedOn ? HIGH : LOW);
+        }
+        setLastRelayState(relayIdx, swithedOn);
     }
-    setLastRelayState(relayIdx, swithedOn);
 }
 
 void checkAndProcessChanges() {
@@ -100,19 +102,21 @@ void RelayController::settingsChanged() {
         const RelaySettings &relaySettings = settings.getRelaySettingsRef(i);
         const PinSettings &setPinSettings = relaySettings.getSetPinSettings();
         if (setPinSettings.isEnabled()) {
-            //TODO remove afterd debug
-            if (setPinSettings.getPin() < 10 || setPinSettings.getPin() > 13) {
+            if (setPinSettings.isAllowedPin()) {
                 pinMode(setPinSettings.getPin(), OUTPUT);
             }
-            pinMode(setPinSettings.getPin(), OUTPUT);
         }
         const PinSettings &monitorPinSettings = relaySettings.getMonitorPinSettings();
         if (monitorPinSettings.isEnabled()) {
-            pinMode(monitorPinSettings.getPin(), monitorPinSettings.isInversed() ? INPUT_PULLUP : INPUT);
+            if (monitorPinSettings.isAllowedPin()) {
+                pinMode(monitorPinSettings.getPin(), monitorPinSettings.isInversed() ? INPUT_PULLUP : INPUT);
+            }
         }
         const PinSettings &controlPinSettings = relaySettings.getControlPinSettings();
         if (controlPinSettings.isEnabled()) {
-            pinMode(controlPinSettings.getPin(), controlPinSettings.isInversed() ? INPUT_PULLUP : INPUT);
+            if (controlPinSettings.isAllowedPin()) {
+                pinMode(controlPinSettings.getPin(), controlPinSettings.isInversed() ? INPUT_PULLUP : INPUT);
+            }
         }
     }
     attachInterrupt(digitalPinToInterrupt(settings.getControlInterruptPin()), onControlPinChange, CHANGE);

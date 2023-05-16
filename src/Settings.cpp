@@ -8,8 +8,9 @@
 
 void Settings::load() {
     relaysCount = EEPROM.read(RELAYS_COUNT_LOCATION);
-    if (relaysCount == 0 || relaysCount > MAX_RELAYS_COUNT) {
-        saveRelaysCount(DEFAULT_RELAYS_COUNT);
+    if (relaysCount > MAX_RELAYS_COUNT) {
+        relaysCount = DEFAULT_RELAYS_COUNT;
+        EEPROM.update(RELAYS_COUNT_LOCATION, relaysCount);
     }
     EEPROM.get(CONTROLLER_ID_LOCATION, controllerId);
     EEPROM.get(CONTROL_INTERRUPT_PIN_LOCATION, controlInterruptPin);
@@ -19,17 +20,22 @@ void Settings::load() {
     ready = true;
 }
 
-bool Settings::saveRelaysCount(uint8_t value) {
-    if (relaysCount > MAX_RELAYS_COUNT) {
-        return false;
-    }
-    relaysCount = value;
-    EEPROM.update(RELAYS_COUNT_LOCATION, relaysCount);
-}
-
 void Settings::saveRelaySettings(uint8_t relayIdx, uint8_t setPinSettingsRaw, uint8_t monitorPinSettingsRaw, uint8_t controlPinSettingsRaw) {
     relaySettings[relayIdx] = RelaySettings(setPinSettingsRaw, monitorPinSettingsRaw, controlPinSettingsRaw);
     EEPROM.put(RELAYS_SETTINGS_START_LOCATION + relayIdx * sizeof (RelaySettings), relaySettings[relayIdx]);
+}
+
+uint8_t Settings::saveRelaySettings(RelaySettings settings[], uint8_t count) {
+    if (count > MAX_RELAYS_COUNT) {
+        count = MAX_RELAYS_COUNT;
+    }
+    relaysCount = count;
+    EEPROM.update(RELAYS_COUNT_LOCATION, relaysCount);
+    for (uint8_t i = 0; i < count; i++) {
+        relaySettings[i] = settings[i];
+        EEPROM.put(RELAYS_SETTINGS_START_LOCATION + i * sizeof (RelaySettings), relaySettings[i]);
+    }
+    return count;
 }
 
 void Settings::saveControllerId(uint32_t controllerId) {
@@ -37,9 +43,20 @@ void Settings::saveControllerId(uint32_t controllerId) {
     EEPROM.put(CONTROLLER_ID_LOCATION, controllerId);
 }
 
-void Settings::saveControlInterruptPin(uint8_t controlInterruptPin) {
+const uint8_t ALLOWED_INTERRUPT_PINS[] = {2, 3};
+
+bool Settings::saveControlInterruptPin(uint8_t controlInterruptPin) {
+    bool allowed = false;
+    for (uint8_t i = 0; i < sizeof (ALLOWED_INTERRUPT_PINS); i++) {
+        if (ALLOWED_INTERRUPT_PINS[i] == controlInterruptPin) {
+            allowed = true;
+            break;
+        }
+    }
+    if (!allowed) return false;
     Settings::controlInterruptPin = controlInterruptPin;
     EEPROM.put(CONTROL_INTERRUPT_PIN_LOCATION, controlInterruptPin);
+    return true;
 }
 
 uint8_t Settings::getRelaysCount() const {

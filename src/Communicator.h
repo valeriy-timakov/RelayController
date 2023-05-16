@@ -11,6 +11,31 @@
 
 #define CMD_BUFF_SIZE 30
 
+
+enum InstructionCode {
+    IC_NONE = 0,
+    IC_READ = 1,
+    IC_SET = 2,
+    IC_SUCCESS = 3,
+    IC_ERROR = 4,
+    IC_UNKNOWN = 16
+};
+
+enum InstructionDataCode {
+    IDC_NONE = 0,
+    IDC_SETTINGS = 1,
+    IDC_STATE = 2,
+    IDC_ID = 3,
+    IDC_ALL = 4,
+    IDC_RELAY_STATE = 5,
+    IDC_RELAY_DISABLED_TEMP = 6,
+    IDC_RELAY_SWITCHED_ON = 7,
+    IDC_RELAY_MONITOR_ON = 8,
+    IDC_RELAY_CONTROL_ON = 9,
+    IDC_INTERRUPT_PIN = 10,
+    IDC_UNKNOWN = 16
+};
+
 enum ErrorCode {
     OK = 0,
     E_REQUEST_DATA_NO_VALUE = 1,
@@ -23,8 +48,9 @@ enum ErrorCode {
     E_RELAY_COUNT_OVERFLOW = 8,
     E_RELAY_COUNT_AND_DATA_MISMATCH = 9,
     E_RELAY_INDEX_OUT_OF_RANGE = 10,
-    E_UNDEFINED_CODE = 100
-
+    E_CONTROL_INTERRUPTED_PIN_NOT_ALLOWED_VALUE = 11,
+    E_RELAY_NOT_ALLOWED_PIN_USED = 0b00100000,
+    E_UNDEFINED_CODE = 128
 };
 
 static const int MAX_COMMAND_READ_TIME = 50;
@@ -49,26 +75,31 @@ private:
     void processBinaryInstruction();
     ErrorCode processBinaryRead();
     ErrorCode processBinarySet();
-    void sendSettings(bool addResultCode = false);
-    ErrorCode saveSettings();
-    ErrorCode sendState(bool addResultCode = false);
+    void sendSettings(bool addResultCode = true);
+    uint8_t saveSettings();
+    ErrorCode sendState(bool addResultCode = true);
     ErrorCode saveState();
-    ErrorCode sendId(bool addResultCode = false);
+    ErrorCode sendId(bool addResultCode = true);
     ErrorCode saveId();
-    ErrorCode sendAll(bool addResultCode = false);
+    ErrorCode sendInterruptPin(bool addResultCode = true);
+    ErrorCode sendAll();
     ErrorCode saveAll();
-    ErrorCode sendRelayState(bool addResultCode = false);
+    ErrorCode sendRelayState();
     ErrorCode saveRelayState();
-    ErrorCode sendRelayDisabledTemp(bool addResultCode = false);
+    ErrorCode sendRelayDisabledTemp();
     ErrorCode saveRelayDisabledTemp();
-    ErrorCode sendRelaySwitchedOn(bool addResultCode = false);
+    ErrorCode sendRelaySwitchedOn();
     ErrorCode saveRelaySwitchedOn();
-    ErrorCode sendRelayMonitorOn(bool addResultCode = false);
-    ErrorCode sendRelayControlOn(bool addResultCode);
-    ErrorCode readRelayIndexFromCmdBuff(uint8_t *string);
-    ErrorCode readUint8FromCmdBuff(uint8_t *result);
+    ErrorCode sendRelayMonitorOn();
+    ErrorCode saveInterruptPin();
+    ErrorCode sendRelayControlOn();
+    ErrorCode send(uint8_t(*getter)(Communicator*, uint8_t), InstructionDataCode dataCode = IDC_UNKNOWN);
+    ErrorCode save(void(*setter)(Communicator*, uint8_t, uint8_t));
+    ErrorCode readUint8FromCmdBuff(uint8_t &result);
+    ErrorCode readUint32FromCommandBuffer(uint32_t &result);
+    ErrorCode readRelayIndexFromCmdBuff(uint8_t &result);
+    ErrorCode readRelayCountFromCmdBuff(uint8_t &count);
     uint8_t readRelayStateBits(uint8_t relayIndex);
-
 };
 
 

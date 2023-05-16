@@ -44,6 +44,17 @@ inline void pinSettingsSetBit(uint8_t &pinSettings, bool set, uint8_t mask) {
     pinSettings = (pinSettings & ~mask) | (set ? mask : 0);
 }
 
+const uint8_t FORBIDEN_PINS[] = {0, 1, 11, 12, 13};
+
+inline bool isPinAllowed(uint8_t pin) {
+    for (uint8_t i = 0; i < sizeof(FORBIDEN_PINS); i++) {
+        if (pin == FORBIDEN_PINS[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 struct PinSettings {
 private:
     uint8_t pinSettings;
@@ -51,7 +62,7 @@ public:
     PinSettings(uint8_t settingsRaw) : pinSettings(settingsRaw) {}
     PinSettings() : pinSettings(RELAY_DISABLED_PIN) {}
     inline uint8_t getPin() const {
-        return (pinSettings & RELAY_PIN_BITS_MASK) >> RELAY_PIN_BITS_START;
+        return (pinSettings & RELAY_PIN_BITS_MASK);
     }
     inline bool isEnabled() const {
         return (pinSettings & RELAY_PIN_BITS_MASK) != RELAY_PIN_BITS_MASK;
@@ -76,6 +87,9 @@ public:
     }
     inline uint8_t getRaw() const {
         return pinSettings;
+    }
+    inline bool isAllowedPin() const {
+        return isPinAllowed(getPin());
     }
 };
 
@@ -126,9 +140,9 @@ public:
     const RelaySettings& getRelaySettingsRef(uint8_t relayIdx) const;
     uint32_t getControllerId() const;
     bool isReady() const;
-    bool saveRelaysCount(uint8_t value);
-    void saveControlInterruptPin(uint8_t controlInterruptPin);
+    bool saveControlInterruptPin(uint8_t controlInterruptPin);
     void saveRelaySettings(uint8_t relayIdx, uint8_t setPinSettingsRaw, uint8_t monitorPinSettingsRaw, uint8_t controlPinSettingsRaw);
+    uint8_t saveRelaySettings(RelaySettings settings[], uint8_t count);
     void saveControllerId(uint32_t controllerId);
     uint8_t getControlInterruptPin() const;
     SettingsPtr getRelaysSettingsPtr() const;

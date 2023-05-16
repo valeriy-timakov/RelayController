@@ -30,4 +30,4 @@ add_custom_target(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-add_executable(Z_DUMMY_TARGET ${SRC_LIST} src/RelayController.cpp src/RelayController.h src/Settings.h src/Settings.cpp src/PinsMonitor.cpp src/PinsMonitor.h src/Communicator.cpp src/Communicator.h src/utils.h src/utils.cpp)
+add_executable(Z_DUMMY_TARGET ${SRC_LIST} src/RelayController.cpp src/RelayController.h src/Settings.h src/Settings.cpp src/Communicator.cpp src/Communicator.h src/utils.h src/utils.cpp)

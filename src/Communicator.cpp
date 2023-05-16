@@ -6,56 +6,12 @@
 #include "utils.h"
 
 #define MAIN_CODE_POSITION 0
-#define INSTRUCTION_CODE_POSITION MAIN_CODE_POSITION + 1
-#define INSTRUCTION_DATA_START_CODE_POSITION INSTRUCTION_CODE_POSITION + 1
+#define INSTRUCTION_CODE_POSITION (MAIN_CODE_POSITION + 1)
+#define INSTRUCTION_DATA_START_CODE_POSITION (INSTRUCTION_CODE_POSITION + 1)
 #define SETTINGS_SIZE_PER_RELAY 3
 #define SET_RELAY_STATE_DATA_SIZE 2
-#define SET_RELAY_STATE_DATA_COUNT_IN_BYTE (sizeof (uint8_t) / SET_RELAY_STATE_DATA_SIZE)
+#define SET_RELAY_STATE_DATA_COUNT_IN_BYTE (8 / SET_RELAY_STATE_DATA_SIZE)
 
-
-enum InstructionCode {
-    IC_NONE = 0,
-    IC_READ = 1,
-    IC_SET = 2,
-    IC_SUCCESS = 3,
-    IC_ERROR = 4,
-    IC_UNKNOWN = 16
-};
-
-enum InstructionDataCode {
-    IDC_NONE = 0,
-    IDC_SETTINGS = 1,
-    IDC_STATE = 2,
-    IDC_ID = 3,
-    IDC_ALL = 4,
-    IDC_RELAY_STATE = 5,
-    IDC_RELAY_DISABLED_TEMP = 6,
-    IDC_RELAY_SWITCHED_ON = 7,
-    IDC_RELAY_MONITOR_ON = 8,
-    IDC_RELAY_CONTROL_ON = 9,
-    IDC_UNKNOWN = 16
-};
-
-
-void Communicator::setup() {
-    Serial.begin(9600);
-    Serial.println("...");
-    if (!settings.isReady()) {
-        settings.load();
-    }
-}
-
-void Communicator::idle() {
-    while (readBinaryCommand()) {
-        processBinaryInstruction();
-    }
-}
-
-void clearSerial() {
-    while (Serial.available()) {
-        Serial.read();
-    }
-}
 
 
 size_t sendSerial(bool value, Stream &serial = Serial) {
@@ -87,22 +43,22 @@ size_t sendSerial(uint16_t value, Stream &serial = Serial) {
 
 size_t sendSerial(uint32_t value, Stream &serial = Serial) {
     uint8_t sum = 0;
-    sum += serial.write(value >> 24);
-    sum += serial.write((value >> 16) & 0xFF);
-    sum += serial.write((value >> 8) & 0xFF);
+    uint8_t shift = 24;
+    for (uint8_t i = 0; i < 3; i++) {
+        sum += serial.write((uint8_t) ((value >> shift) & 0xFF) );
+        shift -= 8;
+    }
     sum += serial.write(value & 0xFF);
     return sum;
 }
 
 size_t sendSerial(uint64_t value, Stream &serial = Serial) {
     uint8_t sum = 0;
-    sum += serial.write((uint8_t)(value >> 56));
-    sum += serial.write((uint8_t)((value >> 48) & 0xFF));
-    sum += serial.write((uint8_t)((value >> 40) & 0xFF));
-    sum += serial.write((uint8_t)((value >> 32) & 0xFF));
-    sum += serial.write((uint8_t)((value >> 24) & 0xFF));
-    sum += serial.write((uint8_t)((value >> 16) & 0xFF));
-    sum += serial.write((uint8_t)((value >> 8) & 0xFF));
+    uint8_t shift = 56;
+    for (uint8_t i = 0; i < 7; i++) {
+        sum += serial.write((uint8_t) ((value >> shift) & 0xFF) );
+        shift -= 8;
+    }
     sum += serial.write((uint8_t)(value & 0xFF));
     return sum;
 }
@@ -113,6 +69,25 @@ size_t sendSerial(const uint8_t *buffer, size_t size, Stream &serial = Serial) {
 
 size_t sendSerial(const char *buffer, Stream &serial = Serial) {
     return serial.write(buffer);
+}
+
+void Communicator::setup() {
+    sendSerial((uint64_t)0L);
+    if (!settings.isReady()) {
+        settings.load();
+    }
+}
+
+void Communicator::idle() {
+    while (readBinaryCommand()) {
+        processBinaryInstruction();
+    }
+}
+
+void clearSerial() {
+    while (Serial.available()) {
+        Serial.read();
+    }
 }
 
 void sendStartAnswer(InstructionDataCode code) {
@@ -131,16 +106,21 @@ void sendSuccess() {
     sendSerial(IC_SUCCESS);
 }
 
+void sendSuccess(uint8_t value) {
+    sendSerial(IC_NONE);
+    sendSerial(IC_SUCCESS);
+    sendSerial(value);
+}
+
 bool Communicator::readBinaryCommand() {
+    if (commandParsed && !commandPocessed) {
+        return true;
+    }
     uint8_t available = Serial.available();
     if (!available) {
         return false;
     }
-    Serial.println("readBinaryCommand");
-    if (commandParsed && !commandPocessed) {
-        return true;
-    }
-    uint32_t currTime = (uint32_t) millis();
+    auto currTime = (uint32_t) millis();
     bool commandReady = lastPacketSize > 0 && lastPacketTime > 0 &&  (available - lastPacketSize) == 0 && (currTime - lastPacketTime) > MAX_COMMAND_READ_TIME;
     if (available != lastPacketSize) {
         lastPacketTime = currTime;
@@ -178,7 +158,7 @@ bool Communicator::readBinaryCommand() {
         commandUnrecognized = firstCode != IC_READ && firstCode != IC_SET;
     }
     if (commandUnrecognized) {
-        Serial.write(cmdBuff, cmdBuffSize);
+        sendSerial(cmdBuff, cmdBuffSize);
         sendError(E_INSTRUCTION_UNRECOGIZED);
         return false;
     }
@@ -207,42 +187,48 @@ void Communicator::processBinaryInstruction() {
             break;
     }
     if (result != OK) {
-        sendError(result);
+        if (result < E_UNDEFINED_CODE) {
+            sendError(result);
+        } else {
+            sendSuccess(result);
+        }
     }
     commandPocessed = true;
 }
 
 ErrorCode Communicator::processBinaryRead() {
-    InstructionDataCode code = (InstructionDataCode) cmdBuff[INSTRUCTION_CODE_POSITION];
+    auto code = (InstructionDataCode) cmdBuff[INSTRUCTION_CODE_POSITION];
     switch (code) {
         case IDC_SETTINGS:
-            sendSettings(true);
+            sendSettings();
             return OK;
         case IDC_STATE:
-            return sendState(true);
+            return sendState();
         case IDC_ID:
-            return sendId(true);
+            return sendId();
         case IDC_ALL:
-            return sendAll(true);
+            return sendAll();
         case IDC_RELAY_STATE:
-            return sendRelayState(true);
+            return sendRelayState();
         case IDC_RELAY_DISABLED_TEMP:
-            return sendRelayDisabledTemp(true);
+            return sendRelayDisabledTemp();
         case IDC_RELAY_SWITCHED_ON:
-            return sendRelaySwitchedOn(true);
+            return sendRelaySwitchedOn();
         case IDC_RELAY_MONITOR_ON:
-            return sendRelayMonitorOn(true);
+            return sendRelayMonitorOn();
         case IDC_RELAY_CONTROL_ON:
-            return sendRelayControlOn(true);
+            return sendRelayControlOn();
+        case IDC_INTERRUPT_PIN:
+            return sendInterruptPin(true);
     }
     return E_UNDEFINED_OPERATION;
 }
 
 ErrorCode Communicator::processBinarySet() {
-    InstructionDataCode code = (InstructionDataCode) cmdBuff[INSTRUCTION_CODE_POSITION];
+    auto code = (InstructionDataCode) cmdBuff[INSTRUCTION_CODE_POSITION];
     switch (code) {
         case IDC_SETTINGS:
-            return saveSettings();
+            return (ErrorCode) saveSettings();
         case IDC_STATE:
             return saveState();
         case IDC_ID:
@@ -255,6 +241,8 @@ ErrorCode Communicator::processBinarySet() {
             return saveRelayDisabledTemp();
         case IDC_RELAY_SWITCHED_ON:
             return saveRelaySwitchedOn();
+        case IDC_INTERRUPT_PIN:
+            return saveInterruptPin();
     }
     return E_UNDEFINED_OPERATION;
 }
@@ -273,25 +261,28 @@ void Communicator::sendSettings(bool addResultCode) {
     }
 }
 
-ErrorCode Communicator::saveSettings() {
-    if (cmdBuffSize < cmdBuffCurrPos + 1) {
-        return E_REQUEST_DATA_NO_VALUE;
-    }
-    uint8_t relayCount = cmdBuff[cmdBuffCurrPos++];
-    if (relayCount > MAX_RELAYS_COUNT) {
-        return E_RELAY_COUNT_OVERFLOW;
-    }
-    if (relayCount * SETTINGS_SIZE_PER_RELAY + cmdBuffCurrPos > cmdBuffSize) {
-        return E_RELAY_COUNT_AND_DATA_MISMATCH;
-    }
-    settings.saveRelaysCount(relayCount);
+uint8_t Communicator::saveSettings() {
+    uint8_t relayCount = 0;
+    ErrorCode res = readRelayCountFromCmdBuff(relayCount);
+    if (res != OK) return res;
+    if (relayCount * SETTINGS_SIZE_PER_RELAY + cmdBuffCurrPos > cmdBuffSize) return E_RELAY_COUNT_AND_DATA_MISMATCH;
+    RelaySettings relaySettings[relayCount];
     for (uint8_t i = 0; i < relayCount; i++) {
-        settings.saveRelaySettings(i,
-            cmdBuff[cmdBuffCurrPos++],
-            cmdBuff[cmdBuffCurrPos++],
-            cmdBuff[cmdBuffCurrPos++]);
+        relaySettings[i] = RelaySettings(
+            cmdBuff[cmdBuffCurrPos],
+            cmdBuff[cmdBuffCurrPos + 1],
+            cmdBuff[cmdBuffCurrPos + 2]
+        );
+        cmdBuffCurrPos += 3;
+        if (!relaySettings[i].getSetPinSettings().isAllowedPin()){
+            return E_RELAY_NOT_ALLOWED_PIN_USED | relaySettings[i].getSetPinSettings().getPin();}
+        if (!relaySettings[i].getMonitorPinSettings().isAllowedPin()){
+            return E_RELAY_NOT_ALLOWED_PIN_USED | relaySettings[i].getMonitorPinSettings().getPin();}
+        if (!relaySettings[i].getControlPinSettings().isAllowedPin()){
+            return E_RELAY_NOT_ALLOWED_PIN_USED | relaySettings[i].getControlPinSettings().getPin();}
     }
-    return OK;
+    uint8_t savedCount = settings.saveRelaySettings(relaySettings, relayCount);
+    return savedCount | E_UNDEFINED_CODE;
 }
 
 ErrorCode Communicator::sendState(bool addResultCode) {
@@ -314,12 +305,13 @@ ErrorCode Communicator::sendState(bool addResultCode) {
 }
 
 ErrorCode Communicator::saveState() {
-    uint8_t count = settings.getRelaysCount();
-    if (cmdBuffSize < cmdBuffCurrPos + SET_RELAY_STATE_DATA_SIZE * count + 1) return E_REQUEST_DATA_NO_VALUE;
-    uint8_t providedCount = cmdBuff[cmdBuffCurrPos++];
-    if (providedCount != count) return E_RELAY_COUNT_AND_DATA_MISMATCH;
+    uint8_t providedCount = 0;
+    ErrorCode res = readRelayCountFromCmdBuff(providedCount);
+    if (res != OK) return res;
+    if (providedCount != settings.getRelaysCount()) return E_RELAY_COUNT_AND_DATA_MISMATCH;
+    if (cmdBuffSize < cmdBuffCurrPos + SET_RELAY_STATE_DATA_SIZE * providedCount + 1) return E_REQUEST_DATA_NO_VALUE;
     uint8_t* data = cmdBuff + cmdBuffCurrPos;
-    for (uint8_t i = 0; i < count; i++) {
+    for (uint8_t i = 0; i < providedCount; i++) {
         uint8_t command = data[i / SET_RELAY_STATE_DATA_COUNT_IN_BYTE];
         uint8_t shift = (i % SET_RELAY_STATE_DATA_COUNT_IN_BYTE) * SET_RELAY_STATE_DATA_SIZE;
         relayController.setRelayState(i, CHECK_BIT(command, shift));
@@ -337,148 +329,171 @@ ErrorCode Communicator::sendId(bool addResultCode) {
 }
 
 ErrorCode Communicator::saveId() {
-    if (cmdBuffSize < cmdBuffCurrPos + sizeof(uint32_t)) {
-        return E_REQUEST_DATA_NO_VALUE;
-    }
-    uint32_t controllerId = *( (uint32_t*)( cmdBuff + cmdBuffCurrPos ) );
-    cmdBuffCurrPos += sizeof(uint32_t);
+    if (cmdBuffSize < cmdBuffCurrPos + sizeof(uint32_t)) return E_REQUEST_DATA_NO_VALUE;
+    uint32_t controllerId = 0;
+    ErrorCode res = readUint32FromCommandBuffer(controllerId);
+    if (res != OK) return res;
     settings.saveControllerId(controllerId);
     return OK;
 }
 
-ErrorCode Communicator::sendAll(bool addResultCode) {
+ErrorCode Communicator::sendInterruptPin(bool addResultCode) {
     if (addResultCode) {
-        sendStartAnswer(IDC_ALL);
+        sendStartAnswer(IDC_INTERRUPT_PIN);
     }
-    sendId();
+    sendSerial(settings.getControlInterruptPin());
+    return OK;
+}
+
+ErrorCode Communicator::saveInterruptPin() {
+    uint8_t pin = 0;
+    ErrorCode res = readUint8FromCmdBuff(pin);
+    if (res != OK) return res;
+    return settings.saveControlInterruptPin(pin) ? OK : E_CONTROL_INTERRUPTED_PIN_NOT_ALLOWED_VALUE;
+}
+
+ErrorCode Communicator::sendAll() {
+    sendStartAnswer(IDC_ALL);
+    sendId(false);
+    sendInterruptPin(false);
     sendSerial(settings.getRelaysCount());
-    sendSettings();
-    sendState();
+    sendSettings(false);
+    sendState(false);
     return OK;
 }
 
 ErrorCode Communicator::saveAll() {
-    if (cmdBuffSize < cmdBuffCurrPos + 1) {
-        return E_REQUEST_DATA_NO_VALUE;
-    }
-    uint8_t relayCount = cmdBuff[cmdBuffCurrPos++];
-    if (relayCount > MAX_RELAYS_COUNT) {
-        return E_RELAY_COUNT_OVERFLOW;
-    }
+    uint8_t relayCount = 0;
+    ErrorCode res = readRelayCountFromCmdBuff(relayCount);
+    if (res != OK) return res;
     if (cmdBuffCurrPos + sizeof(uint32_t) + relayCount * SETTINGS_SIZE_PER_RELAY + SET_RELAY_STATE_DATA_SIZE * relayCount + 1 > cmdBuffSize) {
         return E_REQUEST_DATA_NO_VALUE;
     }
 
     saveId();
+    saveInterruptPin();
     saveSettings();
     saveState();
 
     return OK;
 }
 
-ErrorCode Communicator::sendRelayState(bool addResultCode) {
-    if (cmdBuffSize < cmdBuffCurrPos + 1) return E_REQUEST_DATA_NO_VALUE;
-    uint8_t relayIndex = cmdBuff[cmdBuffCurrPos++];
-    if (relayIndex >= settings.getRelaysCount()) return E_RELAY_INDEX_OUT_OF_RANGE;
-    uint8_t value = readRelayStateBits(relayIndex);
-    if (addResultCode) {
-        sendStartAnswer(IDC_RELAY_STATE);
+ErrorCode Communicator::send(uint8_t(*getter)(Communicator*, uint8_t), InstructionDataCode dataCode) {
+    uint8_t relayIndex;
+    ErrorCode res = readRelayIndexFromCmdBuff(relayIndex);
+    if (res != OK) return res;
+    uint8_t value = getter(this, relayIndex);
+    sendStartAnswer(dataCode);
+    if (value <= 0x0f) {
+        sendSerial((uint8_t)(((value & 0x0F) << 4) | relayIndex));
+    } else {
+        sendSerial(value);
+        sendSerial(relayIndex);
     }
-    sendSerial(value);
     return OK;
+}
+
+ErrorCode Communicator::save(void(*setter)(Communicator*, uint8_t, uint8_t)) {
+    uint8_t cmdData = 0;
+    ErrorCode res = readUint8FromCmdBuff(cmdData);
+    if (res != OK) return res;
+    uint8_t relayIndex = cmdData & 0x0f;
+    if (relayIndex >= settings.getRelaysCount()) return E_RELAY_INDEX_OUT_OF_RANGE;
+    uint8_t value = cmdData >> 4;
+    setter(this, relayIndex, value);
+    return OK;
+}
+
+ErrorCode Communicator::sendRelayState() {
+    return send([]  (Communicator *communicator, uint8_t relayIndex) {
+        uint8_t value = communicator-> readRelayStateBits(relayIndex);
+        value = (value << 4) | relayIndex;
+        return value;
+    }, IDC_RELAY_STATE);
 }
 
 ErrorCode Communicator::saveRelayState() {
-    if (cmdBuffSize < cmdBuffCurrPos + 1) return E_REQUEST_DATA_NO_VALUE;
-    uint8_t command = cmdBuff[cmdBuffCurrPos++];
-    uint8_t relayIndex = (command & 0xF0) >> 4;
-    if (relayIndex >= settings.getRelaysCount()) return E_RELAY_INDEX_OUT_OF_RANGE;
-    uint8_t value = command & 0x0F;
-    relayController.setRelayState(relayIndex, CHECK_BIT(value, 0));
-    relayController.setControlTemporaryDisabled(relayIndex, CHECK_BIT(value, 1));
-    return OK;
+    return save([] (Communicator *communicator, uint8_t relayIndex, uint8_t cmdData) {
+        communicator->relayController.setRelayState(relayIndex, CHECK_BIT(cmdData, 0));
+        communicator->relayController.setControlTemporaryDisabled(relayIndex, CHECK_BIT(cmdData, 1));
+    });
 }
 
-ErrorCode Communicator::sendRelayDisabledTemp(bool addResultCode) {
-    uint8_t relayIndex;
-    ErrorCode res = readRelayIndexFromCmdBuff(&relayIndex);
-    if (res != OK) return res;
-    bool disabled = relayController.isControlTemporaryDisabled(relayIndex);
-    if (addResultCode) {
-        sendStartAnswer(IDC_RELAY_DISABLED_TEMP);
-    }
-    sendSerial(relayIndex);
-    sendSerial(disabled);
-    return OK;
+ErrorCode Communicator::sendRelayDisabledTemp() {
+    return send([]  (Communicator *communicator, uint8_t relayIndex) {
+        uint8_t value = communicator-> relayController.isControlTemporaryDisabled(relayIndex);
+        value = (value << 4) | relayIndex;
+        return value;
+    }, IDC_RELAY_DISABLED_TEMP);
 }
 
 ErrorCode Communicator::saveRelayDisabledTemp() {
-    uint8_t relayIndex;
-    ErrorCode res = readRelayIndexFromCmdBuff(&relayIndex);
-    if (res != OK) return res;
-    uint8_t disabled = 0;
-    res = readUint8FromCmdBuff(&disabled);
-    if (res != OK) return res;
-    relayController.setControlTemporaryDisabled(relayIndex, disabled);
-    return OK;
+    return save([] (Communicator *communicator, uint8_t relayIndex, uint8_t cmdData) {
+        communicator->relayController.setControlTemporaryDisabled(relayIndex, CHECK_BIT(cmdData, 0));
+    });
 }
 
-ErrorCode Communicator::sendRelaySwitchedOn(bool addResultCode) {
-    uint8_t relayIndex;
-    ErrorCode res = readRelayIndexFromCmdBuff(&relayIndex);
-    if (res != OK) return res;
-    if (addResultCode) {
-        sendStartAnswer(IDC_RELAY_SWITCHED_ON);
-    }
-    sendSerial(relayController.getRelayLastState(relayIndex));
-    return OK;
+ErrorCode Communicator::sendRelaySwitchedOn() {
+    return send([]  (Communicator *communicator, uint8_t relayIndex) {
+        uint8_t value = communicator-> relayController.getRelayLastState(relayIndex);
+        value = (value << 4) | relayIndex;
+        return value;
+    }, IDC_RELAY_SWITCHED_ON);
 }
 
 ErrorCode Communicator::saveRelaySwitchedOn() {
-    uint8_t relayIndex;
-    ErrorCode res = readRelayIndexFromCmdBuff(&relayIndex);
-    if (res != OK) return res;
-    uint8_t switchedOn = 0;
-    res = readUint8FromCmdBuff(&switchedOn);
-    if (res != OK) return res;
-    relayController.setRelayState(relayIndex, switchedOn);
-    return OK;
+    return save([] (Communicator *communicator, uint8_t relayIndex, uint8_t cmdData) {
+        communicator->relayController.setRelayState(relayIndex, CHECK_BIT(cmdData, 0));
+    });
 }
 
-ErrorCode Communicator::sendRelayMonitorOn(bool addResultCode) {
-    uint8_t relayIndex;
-    ErrorCode res = readRelayIndexFromCmdBuff(&relayIndex);
-    if (res != OK) return res;
-    if (addResultCode) {
-        sendStartAnswer(IDC_RELAY_SWITCHED_ON);
-    }
-    sendSerial(relayController.checkRelayMonitoringState(relayIndex));
-    return OK;
+ErrorCode Communicator::sendRelayMonitorOn() {
+    return send([]  (Communicator *communicator, uint8_t relayIndex) {
+        uint8_t value = communicator-> relayController.checkRelayMonitoringState(relayIndex);
+        value = (value << 4) | relayIndex;
+        return value;
+    }, IDC_RELAY_MONITOR_ON);
 }
 
-ErrorCode Communicator::sendRelayControlOn(bool addResultCode) {
-    uint8_t relayIndex;
-    ErrorCode res = readRelayIndexFromCmdBuff(&relayIndex);
-    if (res != OK) return res;
-    if (addResultCode) {
-        sendStartAnswer(IDC_RELAY_SWITCHED_ON);
-    }
-    sendSerial(relayController.checkControlPinState(relayIndex));
-    return OK;
+ErrorCode Communicator::sendRelayControlOn() {
+    return send([]  (Communicator *communicator, uint8_t relayIndex) {
+        uint8_t value = communicator-> relayController.checkControlPinState(relayIndex);
+        value = (value << 4) | relayIndex;
+        return value;
+    }, IDC_RELAY_CONTROL_ON);
 }
 
-ErrorCode Communicator::readUint8FromCmdBuff(uint8_t *result) {
+
+ErrorCode Communicator::readUint8FromCmdBuff(uint8_t &result) {
     if (cmdBuffSize < cmdBuffCurrPos + 1) return E_REQUEST_DATA_NO_VALUE;
-    *result = cmdBuff[cmdBuffCurrPos++];
+    result = cmdBuff[cmdBuffCurrPos++];
     return OK;
 }
 
-ErrorCode Communicator::readRelayIndexFromCmdBuff(uint8_t *result) {
+ErrorCode Communicator::readUint32FromCommandBuffer(uint32_t &result) {
+    if (cmdBuffSize < cmdBuffCurrPos + sizeof(uint32_t)) return E_REQUEST_DATA_NO_VALUE;
+    result |= ((uint_fast32_t)cmdBuff[cmdBuffCurrPos++]) << 24;
+    result |= ((uint_fast32_t)cmdBuff[cmdBuffCurrPos++]) << 16;
+    result |= ((uint_fast32_t)cmdBuff[cmdBuffCurrPos++]) << 8;
+    result |= cmdBuff[cmdBuffCurrPos++];
+    return OK;
+}
+
+ErrorCode Communicator::readRelayIndexFromCmdBuff(uint8_t &result) {
     uint8_t res = 0;
-    ErrorCode readRes = readUint8FromCmdBuff(&res);
+    ErrorCode readRes = readUint8FromCmdBuff(res);
     if (readRes != OK) return readRes;
     if (res >= settings.getRelaysCount()) return E_RELAY_INDEX_OUT_OF_RANGE;
-    *result = res;
+    result = res;
+    return OK;
+}
+
+ErrorCode Communicator::readRelayCountFromCmdBuff(uint8_t &count) {
+    uint8_t res = 0;
+    ErrorCode readRes = readUint8FromCmdBuff(res);
+    if (readRes != OK) return readRes;
+    if (res >= MAX_RELAYS_COUNT) return E_RELAY_COUNT_OVERFLOW;
+    count = res;
     return OK;
 }
 
