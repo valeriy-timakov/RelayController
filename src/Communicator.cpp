@@ -220,6 +220,14 @@ ErrorCode Communicator::processBinaryRead() {
             return sendRelayControlOn();
         case IDC_INTERRUPT_PIN:
             return sendInterruptPin(true);
+        case IDC_CONTACT_READY_WAIT_DELAY:
+            return sendContactReadyWaitDelay();
+        case IDC_SWITCH_COUNT_INTERVAL_SEC:
+            return sendSwitchCountIntervalSec();
+#ifdef MEM_32KB
+            case IDC_MAX_SWITCH_COUNT:
+            return sendMaxSwitchCount();
+#endif
     }
     return E_UNDEFINED_OPERATION;
 }
@@ -243,6 +251,16 @@ ErrorCode Communicator::processBinarySet() {
             return saveRelaySwitchedOn();
         case IDC_INTERRUPT_PIN:
             return saveInterruptPin();
+        case IDC_CONTACT_READY_WAIT_DELAY:
+            return saveContactReadyWaitDelay();
+        case IDC_SWITCH_COUNT_INTERVAL_SEC:
+            return saveSwitchCountIntervalSec();
+#ifdef MEM_32KB
+            case IDC_MAX_SWITCH_COUNT:
+            return saveMaxSwitchCount();
+        case IDC_CLEAR_SWITCH_COUNT:
+            return clearSwitchCount();
+#endif
     }
     return E_UNDEFINED_OPERATION;
 }
@@ -351,6 +369,64 @@ ErrorCode Communicator::saveInterruptPin() {
     if (res != OK) return res;
     return settings.saveControlInterruptPin(pin) ? OK : E_CONTROL_INTERRUPTED_PIN_NOT_ALLOWED_VALUE;
 }
+
+ErrorCode Communicator::sendContactReadyWaitDelay() {
+    sendStartAnswer(IDC_CONTACT_READY_WAIT_DELAY);
+    sendSerial(relayController.getContactReadyWaitDelay());
+    return OK;
+}
+
+ErrorCode Communicator::saveContactReadyWaitDelay() {
+    uint16_t value = 0;
+    ErrorCode res = readUint16FromCmdBuff(value);
+    if (res != OK) return res;
+    relayController.setContactReadyWaitDelay(value);
+    return OK;
+}
+
+ErrorCode Communicator::sendSwitchCountIntervalSec() {
+    sendStartAnswer(IDC_SWITCH_COUNT_INTERVAL_SEC);
+    sendSerial(relayController.getSwitchLimitIntervalSec());
+    return OK;
+}
+
+ErrorCode Communicator::saveSwitchCountIntervalSec() {
+    uint16_t value = 0;
+    ErrorCode res = readUint16FromCmdBuff(value);
+    if (res != OK) return res;
+    relayController.setSwitchLimitIntervalSec(value);
+    return OK;
+}
+#ifdef MEM_32KB
+ErrorCode Communicator::sendMaxSwitchCount() {
+    uint8_t relayIdx = 0;
+    ErrorCode res = readRelayIndexFromCmdBuff(relayIdx);
+    if (res != OK) return res;
+    sendStartAnswer(IDC_MAX_SWITCH_COUNT);
+    sendSerial(relayController.getMaxSwitchCount(relayIdx));
+    return OK;
+}
+
+ErrorCode Communicator::saveMaxSwitchCount() {
+    uint8_t relayIdx = 0;
+    ErrorCode res = readRelayIndexFromCmdBuff(relayIdx);
+    if (res != OK) return res;
+    uint8_t value = 0;
+    res = readUint8FromCmdBuff(value);
+    if (res != OK) return res;
+    relayController.setMaxSwitchCount(relayIdx, value);
+    return OK;
+}
+
+ErrorCode Communicator::clearSwitchCount() {
+    uint8_t relayIdx = 0;
+    ErrorCode res = readRelayIndexFromCmdBuff(relayIdx);
+    if (res != OK) return res;
+    relayController.clearSwitchCount(relayIdx);
+    return OK;
+}
+
+#endif
 
 ErrorCode Communicator::sendAll() {
     sendStartAnswer(IDC_ALL);
@@ -467,6 +543,13 @@ ErrorCode Communicator::sendRelayControlOn() {
 ErrorCode Communicator::readUint8FromCmdBuff(uint8_t &result) {
     if (cmdBuffSize < cmdBuffCurrPos + 1) return E_REQUEST_DATA_NO_VALUE;
     result = cmdBuff[cmdBuffCurrPos++];
+    return OK;
+}
+
+ErrorCode Communicator::readUint16FromCmdBuff(uint16_t &result) {
+    if (cmdBuffSize < cmdBuffCurrPos + sizeof(uint32_t)) return E_REQUEST_DATA_NO_VALUE;
+    result |= ((uint_fast16_t)cmdBuff[cmdBuffCurrPos++]) << 8;
+    result |= cmdBuff[cmdBuffCurrPos++];
     return OK;
 }
 

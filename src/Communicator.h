@@ -33,6 +33,12 @@ enum InstructionDataCode {
     IDC_RELAY_MONITOR_ON = 8,
     IDC_RELAY_CONTROL_ON = 9,
     IDC_INTERRUPT_PIN = 10,
+    IDC_CONTACT_READY_WAIT_DELAY = 11,
+    IDC_SWITCH_COUNT_INTERVAL_SEC = 12,
+#ifdef MEM_32KB
+    IDC_MAX_SWITCH_COUNT = 13,
+    IDC_CLEAR_SWITCH_COUNT = 14,
+#endif
     IDC_UNKNOWN = 16
 };
 
@@ -100,6 +106,16 @@ private:
     ErrorCode readRelayIndexFromCmdBuff(uint8_t &result);
     ErrorCode readRelayCountFromCmdBuff(uint8_t &count);
     uint8_t readRelayStateBits(uint8_t relayIndex);
+    ErrorCode sendContactReadyWaitDelay();
+    ErrorCode saveContactReadyWaitDelay();
+    ErrorCode readUint16FromCmdBuff(uint16_t &result);
+    ErrorCode sendSwitchCountIntervalSec();
+    ErrorCode saveSwitchCountIntervalSec();
+#ifdef MEM_32KB
+    ErrorCode sendMaxSwitchCount();
+    ErrorCode saveMaxSwitchCount();
+    ErrorCode clearSwitchCount();
+#endif
 };
 
 

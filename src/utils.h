@@ -13,20 +13,7 @@
 #define BF_MASK(start, len) ( SET_LSBITS(len)<<(start) ) // same but with offset
 #define CHECK_BIT(y, pos) ( ( 0u == ( (y)&(BIT(pos)) ) ) ? 0u : 1u )
 
-inline void setBit(uint16_t &word, uint8_t bitNo, bool bitValue) {
-    if (bitValue) {
-        word |= (1 << bitNo);
-    } else {
-        word &= ~(1 << bitNo);
-    }
-}
-
-inline void setBit(uint8_t &word, uint8_t bitNo, bool bitValue) {
-    if (bitValue) {
-        word |= (1 << bitNo);
-    } else {
-        word &= ~(1 << bitNo);
-    }
-}
+void setBit(uint16_t &word, uint8_t bitNo, bool bitValue);
+void setBit(uint8_t &word, uint8_t bitNo, bool bitValue);
 
 #endif //RELAYCONTROLLER_UTILS_H
