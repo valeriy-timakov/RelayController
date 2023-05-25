@@ -16,4 +16,6 @@
 void setBit(uint16_t &word, uint8_t bitNo, bool bitValue);
 void setBit(uint8_t &word, uint8_t bitNo, bool bitValue);
 
+#define MILLIS_PER_SECOND 1000
+
 #endif //RELAYCONTROLLER_UTILS_H

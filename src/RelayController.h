@@ -11,20 +11,20 @@
 
 class RelayController {
 public:
-    RelayController(Settings &settings) : settings(settings) {}
-    void setup();
-    void idle();
-    void settingsChanged();
-    bool isControlTemporaryDisabled(uint8_t relayIdx);
-    void setControlTemporaryDisabled(uint8_t relayIdx, bool disabled);
-    bool checkRelayMonitoringState(uint8_t relayIdx);
-    bool checkControlPinState(uint8_t relayIdx);
-    bool getRelayLastState(uint8_t relayIdx);
-    void setRelayState(uint8_t relayIdx, bool swithedOn);
-    uint16_t getContactReadyWaitDelay() const;
-    void setContactReadyWaitDelay(uint16_t contactReadyWaitDelay);
-    uint16_t getSwitchLimitIntervalSec() const;
-    void setSwitchLimitIntervalSec(uint16_t switchLimitIntervalSec);
+    static void setup(Settings &settings);
+    static void idle();
+    static bool isControlTemporaryDisabled(uint8_t relayIdx);
+    static void setControlTemporaryDisabled(uint8_t relayIdx, bool disabled);
+    static bool checkRelayMonitoringState(uint8_t relayIdx);
+    static bool checkControlPinState(uint8_t relayIdx);
+    static bool getRelayLastState(uint8_t relayIdx);
+    static void setRelayState(uint8_t relayIdx, bool swithedOn);
+    static uint16_t getContactReadyWaitDelay() ;
+    static void setContactReadyWaitDelay(uint16_t contactReadyWaitDelay);
+    static uint16_t getSwitchLimitIntervalSec() ;
+    static void setSwitchLimitIntervalSec(uint16_t switchLimitIntervalSec);
+    static uint32_t getRemoteTimeStamp() ;
+    static void setRemoteTimeStamp(uint32_t remoteTimeStamp);
 
 #ifdef MEM_32KB
     uint8_t getMaxSwitchCount(uint8_t relayIdx) const;
@@ -33,7 +33,8 @@ public:
 #endif
 
 private:
-    Settings &settings;
+    RelayController() {}
+    static void settingsChanged();
 };
 
 

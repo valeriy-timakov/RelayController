@@ -2,7 +2,7 @@
 // Created by valti on 06.05.2023.
 //
 
-#include "Communicator.h"
+#include "Server.h"
 #include "utils.h"
 
 #define MAIN_CODE_POSITION 0
@@ -13,72 +13,14 @@
 #define SET_RELAY_STATE_DATA_COUNT_IN_BYTE (8 / SET_RELAY_STATE_DATA_SIZE)
 
 
-
-size_t sendSerial(bool value, Stream &serial = Serial) {
-    return serial.write(value ? 1 : 0);
-}
-
-size_t sendSerial(uint8_t value, Stream &serial = Serial) {
-    return serial.write(value);
-}
-
-size_t sendSerial(InstructionCode value, Stream &serial = Serial) {
-    return sendSerial((uint8_t)value, serial);
-}
-
-size_t sendSerial(InstructionDataCode value, Stream &serial = Serial) {
-    return sendSerial((uint8_t)value, serial);
-}
-
-size_t sendSerial(ErrorCode buffer, Stream &serial = Serial) {
-    return serial.write(buffer);
-}
-
-size_t sendSerial(uint16_t value, Stream &serial = Serial) {
-    uint8_t sum = 0;
-    sum += serial.write(value >> 8);
-    sum += serial.write(value & 0xFF);
-    return sum;
-}
-
-size_t sendSerial(uint32_t value, Stream &serial = Serial) {
-    uint8_t sum = 0;
-    uint8_t shift = 24;
-    for (uint8_t i = 0; i < 3; i++) {
-        sum += serial.write((uint8_t) ((value >> shift) & 0xFF) );
-        shift -= 8;
-    }
-    sum += serial.write(value & 0xFF);
-    return sum;
-}
-
-size_t sendSerial(uint64_t value, Stream &serial = Serial) {
-    uint8_t sum = 0;
-    uint8_t shift = 56;
-    for (uint8_t i = 0; i < 7; i++) {
-        sum += serial.write((uint8_t) ((value >> shift) & 0xFF) );
-        shift -= 8;
-    }
-    sum += serial.write((uint8_t)(value & 0xFF));
-    return sum;
-}
-
-size_t sendSerial(const uint8_t *buffer, size_t size, Stream &serial = Serial) {
-    return serial.write(buffer, size);
-}
-
-size_t sendSerial(const char *buffer, Stream &serial = Serial) {
-    return serial.write(buffer);
-}
-
-void Communicator::setup() {
+void Server::setup() {
     sendSerial((uint64_t)0L);
     if (!settings.isReady()) {
         settings.load();
     }
 }
 
-void Communicator::idle() {
+void Server::idle() {
     while (readBinaryCommand()) {
         processBinaryInstruction();
     }
@@ -88,11 +30,6 @@ void clearSerial() {
     while (Serial.available()) {
         Serial.read();
     }
-}
-
-void sendStartAnswer(InstructionDataCode code) {
-    sendSerial(IC_NONE);
-    sendSerial(code);
 }
 
 void sendError(ErrorCode code) {
@@ -112,7 +49,7 @@ void sendSuccess(uint8_t value) {
     sendSerial(value);
 }
 
-bool Communicator::readBinaryCommand() {
+bool Server::readBinaryCommand() {
     if (commandParsed && !commandPocessed) {
         return true;
     }
@@ -167,7 +104,7 @@ bool Communicator::readBinaryCommand() {
     return true;
 }
 
-void Communicator::processBinaryInstruction() {
+void Server::processBinaryInstruction() {
     uint8_t mainCode = cmdBuff[MAIN_CODE_POSITION];
     cmdBuffCurrPos = INSTRUCTION_DATA_START_CODE_POSITION;
     ErrorCode result;
@@ -185,6 +122,9 @@ void Communicator::processBinaryInstruction() {
                 sendSuccess();
             }
             break;
+        default:
+            result = E_INSTRUCTION_UNRECOGIZED;
+            break;
     }
     if (result != OK) {
         if (result < E_UNDEFINED_CODE) {
@@ -196,7 +136,7 @@ void Communicator::processBinaryInstruction() {
     commandPocessed = true;
 }
 
-ErrorCode Communicator::processBinaryRead() {
+ErrorCode Server::processBinaryRead() {
     auto code = (InstructionDataCode) cmdBuff[INSTRUCTION_CODE_POSITION];
     switch (code) {
         case IDC_SETTINGS:
@@ -210,6 +150,7 @@ ErrorCode Communicator::processBinaryRead() {
             return sendAll();
         case IDC_RELAY_STATE:
             return sendRelayState();
+#ifdef MEM_32KB
         case IDC_RELAY_DISABLED_TEMP:
             return sendRelayDisabledTemp();
         case IDC_RELAY_SWITCHED_ON:
@@ -218,21 +159,40 @@ ErrorCode Communicator::processBinaryRead() {
             return sendRelayMonitorOn();
         case IDC_RELAY_CONTROL_ON:
             return sendRelayControlOn();
+#endif
         case IDC_INTERRUPT_PIN:
             return sendInterruptPin(true);
         case IDC_CONTACT_READY_WAIT_DELAY:
             return sendContactReadyWaitDelay();
         case IDC_SWITCH_COUNT_INTERVAL_SEC:
             return sendSwitchCountIntervalSec();
+        case IDC_STATE_FIX_SETTINGS:
+            return sendStateFixSettings();
+        case IDC_REMOTE_TIMESTAMP:
+            return sendRemoteTimestamp();
 #ifdef MEM_32KB
-            case IDC_MAX_SWITCH_COUNT:
+        case IDC_MAX_SWITCH_COUNT:
             return sendMaxSwitchCount();
 #endif
+        case IDC_VERSION:
+            sendStartAnswer(IDC_VERSION);
+#ifdef MEM_32KB
+            sendSerial((uint8_t)2);
+#else
+            sendSerial((uint8_t)1);
+#endif
+            return OK;
+        case IDC_SWITCH_DATA:
+            return sendSwithcData();
+
+#ifdef MEM_32KB
+#endif
+        default:
+            return E_UNDEFINED_OPERATION;
     }
-    return E_UNDEFINED_OPERATION;
 }
 
-ErrorCode Communicator::processBinarySet() {
+ErrorCode Server::processBinarySet() {
     auto code = (InstructionDataCode) cmdBuff[INSTRUCTION_CODE_POSITION];
     switch (code) {
         case IDC_SETTINGS:
@@ -245,27 +205,34 @@ ErrorCode Communicator::processBinarySet() {
             return saveAll();
         case IDC_RELAY_STATE:
             return saveRelayState();
+#ifdef MEM_32KB
         case IDC_RELAY_DISABLED_TEMP:
             return saveRelayDisabledTemp();
         case IDC_RELAY_SWITCHED_ON:
             return saveRelaySwitchedOn();
         case IDC_INTERRUPT_PIN:
             return saveInterruptPin();
+#endif
         case IDC_CONTACT_READY_WAIT_DELAY:
             return saveContactReadyWaitDelay();
         case IDC_SWITCH_COUNT_INTERVAL_SEC:
             return saveSwitchCountIntervalSec();
+        case IDC_STATE_FIX_SETTINGS:
+            return saveStateFixSettings();
+        case IDC_REMOTE_TIMESTAMP:
+            return saveRemoteTimestamp();
 #ifdef MEM_32KB
             case IDC_MAX_SWITCH_COUNT:
             return saveMaxSwitchCount();
         case IDC_CLEAR_SWITCH_COUNT:
             return clearSwitchCount();
 #endif
+        default:
+            return E_UNDEFINED_OPERATION;
     }
-    return E_UNDEFINED_OPERATION;
 }
 
-void Communicator::sendSettings(bool addResultCode) {
+void Server::sendSettings(bool addResultCode) {
     uint8_t relayCount = settings.getRelaysCount();
     if (addResultCode) {
         sendStartAnswer(IDC_SETTINGS);
@@ -279,7 +246,7 @@ void Communicator::sendSettings(bool addResultCode) {
     }
 }
 
-uint8_t Communicator::saveSettings() {
+uint8_t Server::saveSettings() {
     uint8_t relayCount = 0;
     ErrorCode res = readRelayCountFromCmdBuff(relayCount);
     if (res != OK) return res;
@@ -303,7 +270,7 @@ uint8_t Communicator::saveSettings() {
     return savedCount | E_UNDEFINED_CODE;
 }
 
-ErrorCode Communicator::sendState(bool addResultCode) {
+ErrorCode Server::sendState(bool addResultCode) {
     uint8_t count = settings.getRelaysCount();
     uint8_t pairsCount = count / 2 + count % 2;
     uint8_t result[pairsCount];
@@ -322,7 +289,7 @@ ErrorCode Communicator::sendState(bool addResultCode) {
     return OK;
 }
 
-ErrorCode Communicator::saveState() {
+ErrorCode Server::saveState() {
     uint8_t providedCount = 0;
     ErrorCode res = readRelayCountFromCmdBuff(providedCount);
     if (res != OK) return res;
@@ -332,13 +299,13 @@ ErrorCode Communicator::saveState() {
     for (uint8_t i = 0; i < providedCount; i++) {
         uint8_t command = data[i / SET_RELAY_STATE_DATA_COUNT_IN_BYTE];
         uint8_t shift = (i % SET_RELAY_STATE_DATA_COUNT_IN_BYTE) * SET_RELAY_STATE_DATA_SIZE;
-        relayController.setRelayState(i, CHECK_BIT(command, shift));
-        relayController.setControlTemporaryDisabled(i, CHECK_BIT(command, shift + 1));
+        RelayController::setRelayState(i, CHECK_BIT(command, shift));
+        RelayController::setControlTemporaryDisabled(i, CHECK_BIT(command, shift + 1));
     }
     return OK;
 }
 
-ErrorCode Communicator::sendId(bool addResultCode) {
+ErrorCode Server::sendId(bool addResultCode) {
     if (addResultCode) {
         sendStartAnswer(IDC_ID);
     }
@@ -346,7 +313,7 @@ ErrorCode Communicator::sendId(bool addResultCode) {
     return OK;
 }
 
-ErrorCode Communicator::saveId() {
+ErrorCode Server::saveId() {
     if (cmdBuffSize < cmdBuffCurrPos + sizeof(uint32_t)) return E_REQUEST_DATA_NO_VALUE;
     uint32_t controllerId = 0;
     ErrorCode res = readUint32FromCommandBuffer(controllerId);
@@ -355,7 +322,7 @@ ErrorCode Communicator::saveId() {
     return OK;
 }
 
-ErrorCode Communicator::sendInterruptPin(bool addResultCode) {
+ErrorCode Server::sendInterruptPin(bool addResultCode) {
     if (addResultCode) {
         sendStartAnswer(IDC_INTERRUPT_PIN);
     }
@@ -363,72 +330,110 @@ ErrorCode Communicator::sendInterruptPin(bool addResultCode) {
     return OK;
 }
 
-ErrorCode Communicator::saveInterruptPin() {
+ErrorCode Server::saveInterruptPin() {
     uint8_t pin = 0;
     ErrorCode res = readUint8FromCmdBuff(pin);
     if (res != OK) return res;
     return settings.saveControlInterruptPin(pin) ? OK : E_CONTROL_INTERRUPTED_PIN_NOT_ALLOWED_VALUE;
 }
 
-ErrorCode Communicator::sendContactReadyWaitDelay() {
+ErrorCode Server::sendContactReadyWaitDelay() {
     sendStartAnswer(IDC_CONTACT_READY_WAIT_DELAY);
-    sendSerial(relayController.getContactReadyWaitDelay());
+    sendSerial(RelayController::getContactReadyWaitDelay());
     return OK;
 }
 
-ErrorCode Communicator::saveContactReadyWaitDelay() {
+ErrorCode Server::saveContactReadyWaitDelay() {
     uint16_t value = 0;
     ErrorCode res = readUint16FromCmdBuff(value);
     if (res != OK) return res;
-    relayController.setContactReadyWaitDelay(value);
+    RelayController::setContactReadyWaitDelay(value);
     return OK;
 }
 
-ErrorCode Communicator::sendSwitchCountIntervalSec() {
+ErrorCode Server::sendSwitchCountIntervalSec() {
     sendStartAnswer(IDC_SWITCH_COUNT_INTERVAL_SEC);
-    sendSerial(relayController.getSwitchLimitIntervalSec());
+    sendSerial(RelayController::getSwitchLimitIntervalSec());
     return OK;
 }
 
-ErrorCode Communicator::saveSwitchCountIntervalSec() {
+ErrorCode Server::saveSwitchCountIntervalSec() {
     uint16_t value = 0;
     ErrorCode res = readUint16FromCmdBuff(value);
     if (res != OK) return res;
-    relayController.setSwitchLimitIntervalSec(value);
+    RelayController::setSwitchLimitIntervalSec(value);
     return OK;
 }
+
+ErrorCode Server::sendStateFixSettings() {
+    sendStartAnswer(IDC_STATE_FIX_SETTINGS);
+    const StateFixSettings &stateFixSettings = settings.getStateFixSettings();
+    sendSerial(stateFixSettings.getDelayMillis());
+    sendSerial(stateFixSettings.getMaxCount());
+    sendSerial(stateFixSettings.getMinWaitDelaySec());
+    return OK;
+}
+
+ErrorCode Server::saveStateFixSettings() {
+    uint16_t delayMillis = 0;
+    ErrorCode res = readUint16FromCmdBuff(delayMillis);
+    if (res != OK) return res;
+    uint8_t maxCount = 0;
+    res = readUint8FromCmdBuff(maxCount);
+    if (res != OK) return res;
+    uint16_t minWaitDelaySec = 0;
+    res = readUint16FromCmdBuff(minWaitDelaySec);
+    if (res != OK) return res;
+    settings.saveStateFixSettings(StateFixSettings(delayMillis, maxCount, minWaitDelaySec));
+    return OK;
+}
+
+ErrorCode Server::sendRemoteTimestamp() {
+    sendStartAnswer(IDC_REMOTE_TIMESTAMP);
+    sendSerial(RelayController::getRemoteTimeStamp());
+    return OK;
+}
+
+ErrorCode Server::saveRemoteTimestamp() {
+    uint32_t value = 0;
+    ErrorCode res = readUint32FromCommandBuffer(value);
+    if (res != OK) return res;
+    RelayController::setRemoteTimeStamp(value);
+    return OK;
+}
+
 #ifdef MEM_32KB
-ErrorCode Communicator::sendMaxSwitchCount() {
+ErrorCode Server::sendMaxSwitchCount() {
     uint8_t relayIdx = 0;
     ErrorCode res = readRelayIndexFromCmdBuff(relayIdx);
     if (res != OK) return res;
     sendStartAnswer(IDC_MAX_SWITCH_COUNT);
-    sendSerial(relayController.getMaxSwitchCount(relayIdx));
+    sendSerial(RelayController::getMaxSwitchCount(relayIdx));
     return OK;
 }
 
-ErrorCode Communicator::saveMaxSwitchCount() {
+ErrorCode Server::saveMaxSwitchCount() {
     uint8_t relayIdx = 0;
     ErrorCode res = readRelayIndexFromCmdBuff(relayIdx);
     if (res != OK) return res;
     uint8_t value = 0;
     res = readUint8FromCmdBuff(value);
     if (res != OK) return res;
-    relayController.setMaxSwitchCount(relayIdx, value);
+    RelayController::setMaxSwitchCount(relayIdx, value);
     return OK;
 }
 
-ErrorCode Communicator::clearSwitchCount() {
+ErrorCode Server::clearSwitchCount() {
     uint8_t relayIdx = 0;
     ErrorCode res = readRelayIndexFromCmdBuff(relayIdx);
     if (res != OK) return res;
-    relayController.clearSwitchCount(relayIdx);
+    RelayController::clearSwitchCount(relayIdx);
     return OK;
 }
 
 #endif
 
-ErrorCode Communicator::sendAll() {
+ErrorCode Server::sendAll() {
     sendStartAnswer(IDC_ALL);
     sendId(false);
     sendInterruptPin(false);
@@ -438,7 +443,7 @@ ErrorCode Communicator::sendAll() {
     return OK;
 }
 
-ErrorCode Communicator::saveAll() {
+ErrorCode Server::saveAll() {
     uint8_t relayCount = 0;
     ErrorCode res = readRelayCountFromCmdBuff(relayCount);
     if (res != OK) return res;
@@ -454,7 +459,18 @@ ErrorCode Communicator::saveAll() {
     return OK;
 }
 
-ErrorCode Communicator::send(uint8_t(*getter)(Communicator*, uint8_t), InstructionDataCode dataCode) {
+ErrorCode Server::sendSwithcData() {
+    sendStartAnswer(IDC_SWITCH_DATA);
+    //TODO implement
+    /*
+    sendSerial((uint8_t)switchData.size());
+    for (auto &data : switchData) {
+        sendSerial(data);
+    }*/
+    return OK;
+}
+
+ErrorCode Server::send(uint8_t(*getter)(Server*, uint8_t), InstructionDataCode dataCode) {
     uint8_t relayIndex;
     ErrorCode res = readRelayIndexFromCmdBuff(relayIndex);
     if (res != OK) return res;
@@ -469,7 +485,7 @@ ErrorCode Communicator::send(uint8_t(*getter)(Communicator*, uint8_t), Instructi
     return OK;
 }
 
-ErrorCode Communicator::save(void(*setter)(Communicator*, uint8_t, uint8_t)) {
+ErrorCode Server::save(void(*setter)(Server*, uint8_t, uint8_t)) {
     uint8_t cmdData = 0;
     ErrorCode res = readUint8FromCmdBuff(cmdData);
     if (res != OK) return res;
@@ -480,80 +496,83 @@ ErrorCode Communicator::save(void(*setter)(Communicator*, uint8_t, uint8_t)) {
     return OK;
 }
 
-ErrorCode Communicator::sendRelayState() {
-    return send([]  (Communicator *communicator, uint8_t relayIndex) {
-        uint8_t value = communicator-> readRelayStateBits(relayIndex);
+ErrorCode Server::sendRelayState() {
+    return send([]  (Server *communicator, uint8_t relayIndex) {
+        uint8_t value = Server::readRelayStateBits(relayIndex);
         value = (value << 4) | relayIndex;
         return value;
     }, IDC_RELAY_STATE);
 }
 
-ErrorCode Communicator::saveRelayState() {
-    return save([] (Communicator *communicator, uint8_t relayIndex, uint8_t cmdData) {
-        communicator->relayController.setRelayState(relayIndex, CHECK_BIT(cmdData, 0));
-        communicator->relayController.setControlTemporaryDisabled(relayIndex, CHECK_BIT(cmdData, 1));
+ErrorCode Server::saveRelayState() {
+    return save([] (Server *communicator, uint8_t relayIndex, uint8_t cmdData) {
+        RelayController::setRelayState(relayIndex, CHECK_BIT(cmdData, 0));
+        RelayController::setControlTemporaryDisabled(relayIndex, CHECK_BIT(cmdData, 1));
     });
 }
 
-ErrorCode Communicator::sendRelayDisabledTemp() {
-    return send([]  (Communicator *communicator, uint8_t relayIndex) {
-        uint8_t value = communicator-> relayController.isControlTemporaryDisabled(relayIndex);
+#ifdef MEM_32KB
+
+ErrorCode Server::sendRelayDisabledTemp() {
+    return send([]  (Server *communicator, uint8_t relayIndex) {
+        uint8_t value = communicator-> RelayController::isControlTemporaryDisabled(relayIndex);
         value = (value << 4) | relayIndex;
         return value;
     }, IDC_RELAY_DISABLED_TEMP);
 }
 
-ErrorCode Communicator::saveRelayDisabledTemp() {
-    return save([] (Communicator *communicator, uint8_t relayIndex, uint8_t cmdData) {
-        communicator->relayController.setControlTemporaryDisabled(relayIndex, CHECK_BIT(cmdData, 0));
+ErrorCode Server::saveRelayDisabledTemp() {
+    return save([] (Server *communicator, uint8_t relayIndex, uint8_t cmdData) {
+        communicator->RelayController::setControlTemporaryDisabled(relayIndex, CHECK_BIT(cmdData, 0));
     });
 }
 
-ErrorCode Communicator::sendRelaySwitchedOn() {
-    return send([]  (Communicator *communicator, uint8_t relayIndex) {
-        uint8_t value = communicator-> relayController.getRelayLastState(relayIndex);
+ErrorCode Server::sendRelaySwitchedOn() {
+    return send([]  (Server *communicator, uint8_t relayIndex) {
+        uint8_t value = communicator-> RelayController::getRelayLastState(relayIndex);
         value = (value << 4) | relayIndex;
         return value;
     }, IDC_RELAY_SWITCHED_ON);
 }
 
-ErrorCode Communicator::saveRelaySwitchedOn() {
-    return save([] (Communicator *communicator, uint8_t relayIndex, uint8_t cmdData) {
-        communicator->relayController.setRelayState(relayIndex, CHECK_BIT(cmdData, 0));
+ErrorCode Server::saveRelaySwitchedOn() {
+    return save([] (Server *communicator, uint8_t relayIndex, uint8_t cmdData) {
+        communicator->RelayController::setRelayState(relayIndex, CHECK_BIT(cmdData, 0));
     });
 }
 
-ErrorCode Communicator::sendRelayMonitorOn() {
-    return send([]  (Communicator *communicator, uint8_t relayIndex) {
-        uint8_t value = communicator-> relayController.checkRelayMonitoringState(relayIndex);
+ErrorCode Server::sendRelayMonitorOn() {
+    return send([]  (Server *communicator, uint8_t relayIndex) {
+        uint8_t value = communicator-> RelayController::checkRelayMonitoringState(relayIndex);
         value = (value << 4) | relayIndex;
         return value;
     }, IDC_RELAY_MONITOR_ON);
 }
 
-ErrorCode Communicator::sendRelayControlOn() {
-    return send([]  (Communicator *communicator, uint8_t relayIndex) {
-        uint8_t value = communicator-> relayController.checkControlPinState(relayIndex);
+ErrorCode Server::sendRelayControlOn() {
+    return send([]  (Server *communicator, uint8_t relayIndex) {
+        uint8_t value = communicator-> RelayController::checkControlPinState(relayIndex);
         value = (value << 4) | relayIndex;
         return value;
     }, IDC_RELAY_CONTROL_ON);
 }
 
+#endif
 
-ErrorCode Communicator::readUint8FromCmdBuff(uint8_t &result) {
+ErrorCode Server::readUint8FromCmdBuff(uint8_t &result) {
     if (cmdBuffSize < cmdBuffCurrPos + 1) return E_REQUEST_DATA_NO_VALUE;
     result = cmdBuff[cmdBuffCurrPos++];
     return OK;
 }
 
-ErrorCode Communicator::readUint16FromCmdBuff(uint16_t &result) {
+ErrorCode Server::readUint16FromCmdBuff(uint16_t &result) {
     if (cmdBuffSize < cmdBuffCurrPos + sizeof(uint32_t)) return E_REQUEST_DATA_NO_VALUE;
     result |= ((uint_fast16_t)cmdBuff[cmdBuffCurrPos++]) << 8;
     result |= cmdBuff[cmdBuffCurrPos++];
     return OK;
 }
 
-ErrorCode Communicator::readUint32FromCommandBuffer(uint32_t &result) {
+ErrorCode Server::readUint32FromCommandBuffer(uint32_t &result) {
     if (cmdBuffSize < cmdBuffCurrPos + sizeof(uint32_t)) return E_REQUEST_DATA_NO_VALUE;
     result |= ((uint_fast32_t)cmdBuff[cmdBuffCurrPos++]) << 24;
     result |= ((uint_fast32_t)cmdBuff[cmdBuffCurrPos++]) << 16;
@@ -562,7 +581,7 @@ ErrorCode Communicator::readUint32FromCommandBuffer(uint32_t &result) {
     return OK;
 }
 
-ErrorCode Communicator::readRelayIndexFromCmdBuff(uint8_t &result) {
+ErrorCode Server::readRelayIndexFromCmdBuff(uint8_t &result) {
     uint8_t res = 0;
     ErrorCode readRes = readUint8FromCmdBuff(res);
     if (readRes != OK) return readRes;
@@ -571,7 +590,7 @@ ErrorCode Communicator::readRelayIndexFromCmdBuff(uint8_t &result) {
     return OK;
 }
 
-ErrorCode Communicator::readRelayCountFromCmdBuff(uint8_t &count) {
+ErrorCode Server::readRelayCountFromCmdBuff(uint8_t &count) {
     uint8_t res = 0;
     ErrorCode readRes = readUint8FromCmdBuff(res);
     if (readRes != OK) return readRes;
@@ -580,13 +599,11 @@ ErrorCode Communicator::readRelayCountFromCmdBuff(uint8_t &count) {
     return OK;
 }
 
-uint8_t Communicator::readRelayStateBits(uint8_t relayIndex) {
+uint8_t Server::readRelayStateBits(uint8_t relayIndex) {
     uint8_t result = 0;
-    setBit(result, 0, relayController.checkRelayMonitoringState(relayIndex));
-    setBit(result, 1, relayController.getRelayLastState(relayIndex));
-    setBit(result, 2, relayController.isControlTemporaryDisabled(relayIndex));
-    setBit(result, 3, relayController.checkControlPinState(relayIndex));
+    setBit(result, 0, RelayController::checkRelayMonitoringState(relayIndex));
+    setBit(result, 1, RelayController::getRelayLastState(relayIndex));
+    setBit(result, 2, RelayController::isControlTemporaryDisabled(relayIndex));
+    setBit(result, 3, RelayController::checkControlPinState(relayIndex));
     return result;
 }
-
-

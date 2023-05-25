@@ -1,22 +1,21 @@
 #include <Arduino.h>
 #include "Settings.h"
 #include "RelayController.h"
-#include "Communicator.h"
+#include "Server.h"
 
 Settings data;
-RelayController relayController(data);
-Communicator communicator(data, relayController);
+Server communicator(data);
 
 
 void setup() {
     Serial.begin(9600);
     delay(100);
     data.load();
-    relayController.setup();
+    RelayController::setup(data);
     communicator.setup();
 }
 
 void loop() {
-    relayController.idle();
+    RelayController::idle();
     communicator.idle();
 }
