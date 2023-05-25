@@ -190,6 +190,8 @@ ErrorCode Server::processBinaryRead(InstructionDataCode code) {
             return sendFixData();
         case IDC_SWITCH_DATA:
             return sendSwitchData();
+        case IDC_CONTACT_WAIT_DATA:
+            return sendContactWaitData();
 
 #ifdef MEM_32KB
 #endif
@@ -485,6 +487,15 @@ ErrorCode Server::sendSwitchData() {
     return OK;
 }
 
+ErrorCode Server::sendContactWaitData() {
+    sendStartResponse(IDC_CONTACT_WAIT_DATA);
+    for (uint8_t i = 0; i < settings.getRelaysCount(); i++) {
+        sendSerial(RelayController::getContactStartWait(i));
+    }
+    return OK;
+}
+
+
 ErrorCode Server::send(uint8_t(*getter)(Server*, uint8_t), InstructionDataCode dataCode) {
     uint8_t relayIndex;
     ErrorCode res = readRelayIndexFromCmdBuff(relayIndex);
@@ -622,5 +633,4 @@ uint8_t Server::readRelayStateBits(uint8_t relayIndex) {
     setBit(result, 3, RelayController::checkControlPinState(relayIndex));
     return result;
 }
-
 

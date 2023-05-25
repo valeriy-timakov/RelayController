@@ -16,8 +16,11 @@
 uint16_t contactReadyWaitDelay = DEFAULT_CONTACT_READY_WAIT_DELAY;
 uint16_t switchLimitIntervalSec = 600;
 
+uint32_t getRemoteTimeSec();
+
 struct ContactWaitData {
     uint16_t data = 0;
+    uint32_t startWaitSec = 0;
     [[nodiscard]] inline bool isWaitStarted() const {
         return CHECK_BIT(data, CONTACT_READY_WAIT_DATA_STARTED_BIT);
     }
@@ -25,11 +28,13 @@ struct ContactWaitData {
         return (millis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK) - (data & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK) >= contactReadyWaitDelay;
     }
     inline void startWait() {
+        startWaitSec = getRemoteTimeSec();
         data = millis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK;
         setBit(data, CONTACT_READY_WAIT_DATA_STARTED_BIT, true);
     }
     inline void stopWait() {
         data = 0;
+        startWaitSec = 0;
     }
     inline void update(bool value) {
         bool lastStateOn = CHECK_BIT(data, CONTACT_READY_WAIT_DATA_LAST_STATE_BIT);
@@ -49,6 +54,9 @@ struct ContactWaitData {
             update(ctrlPinSet);
             return false;
         }
+    }
+    [[nodiscard]] inline uint32_t getStartWaitSec() const {
+        return startWaitSec;
     }
 };
 
@@ -207,11 +215,15 @@ uint32_t getLocalTimeSec() {
     return millis() / MILLIS_PER_SECOND - startLocalTimeSec;
 }
 
+uint32_t getRemoteTimeSec() {
+    return getLocalTimeSec() + remoteTimeStamp;
+}
+
 inline void writePinStateForse(const PinSettings &pinSettings, bool switchedOn) {
     digitalWrite(pinSettings.getPin(), pinSettings.isInversed() != switchedOn ? HIGH : LOW);
 }
 
-void setRelayState_(const RelaySettings &relaySettings, bool switchedOn, uint8_t relayIdx) {
+void setRelayState_(const RelaySettings &relaySettings, bool switchedOn, uint8_t relayIdx, bool internal) {
     const PinSettings &setPinSettings = relaySettings.getSetPinSettings();
     if (setPinSettings.isAllowedPin() && setPinSettings.isEnabled()) {
         Serial.write(0xfd);
@@ -221,10 +233,13 @@ void setRelayState_(const RelaySettings &relaySettings, bool switchedOn, uint8_t
         Serial.write(switchedOn ? 0x01 : 0x00);
         writePinStateForse(setPinSettings, switchedOn);
         setLastRelayState(relayIdx, switchedOn);
-        uint32_t switchTimeData = getLocalTimeSec() + remoteTimeStamp;
-        switchTimeData = (switchTimeData & 0x07ffffff) | (((uint32_t)relayIdx) << 28);
+        uint32_t switchTimeData = getRemoteTimeSec();
+        switchTimeData = (switchTimeData & 0x03ffffff) | (((uint32_t)relayIdx) << 28);
         if (switchedOn) {
             switchTimeData |= 1l << 27;
+        }
+        if (internal) {
+            switchTimeData |= 1l << 26;
         }
         stateSwitchDatas[stateSwitchCount++] = switchTimeData;
         stateFixTimes[relayIdx] = getLocalTimeSec();
@@ -279,7 +294,7 @@ void checkAndProcessChanges() {
                 if (relaySettings.isControlPinSwitchByPush() && ctrlPinSet) {
                     switchRelayState(relaySettings, i);
                 } else {
-                    setRelayState_(relaySettings, ctrlPinSet, i);
+                    setRelayState_(relaySettings, ctrlPinSet, i, true);
                 }
                 setLastControlState(i, ctrlPinSet);
             }
@@ -298,7 +313,7 @@ void onControlPinChange() {
 
 void switchRelayState(const RelaySettings &settings, uint8_t i) {
     bool switchedOn = !getLastRelayState(i);
-    setRelayState_(settings, switchedOn, i);
+    setRelayState_(settings, switchedOn, i, true);
 }
 
 void RelayController::settingsChanged() {
@@ -393,7 +408,7 @@ void RelayController::setRelayState(uint8_t relayIdx, bool switchedOn) {
     if (relayIdx >= settings_.getRelaysCount()) {
         return;
     }
-    setRelayState_(settings_.getRelaySettingsRef(relayIdx), switchedOn, relayIdx);
+    setRelayState_(settings_.getRelaySettingsRef(relayIdx), switchedOn, relayIdx, false);
 }
 
 uint16_t RelayController::getContactReadyWaitDelay() {
@@ -449,6 +464,10 @@ uint8_t RelayController::getSwitchData(uint32_t **data) {
 
 void RelayController::clearSwitchData() {
     stateSwitchCount = 0;
+}
+
+uint32_t RelayController::getContactStartWait(uint8_t relayIdx) {
+    return lastChangeWaitDatas[relayIdx].getStartWaitSec();
 }
 
 #ifdef MEM_32KB

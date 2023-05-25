@@ -31,6 +31,7 @@ public:
     static int32_t getFixLastTryTime(uint8_t relayIdx);
     static uint8_t getSwitchData(uint32_t **data);
     static void clearSwitchData();
+    static uint32_t getContactStartWait(uint8_t relayIdx);
 
 #ifdef MEM_32KB
     uint8_t getMaxSwitchCount(uint8_t relayIdx) const;

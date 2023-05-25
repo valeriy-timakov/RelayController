@@ -81,6 +81,8 @@ private:
     ErrorCode saveRemoteTimestamp();
     static ErrorCode sendSwitchData();
     ErrorCode sendFixData();
+
+    ErrorCode sendContactWaitData();
 };
 
 

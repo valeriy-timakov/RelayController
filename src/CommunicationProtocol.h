@@ -39,6 +39,7 @@ enum InstructionDataCode {
     IDC_FIX_DATA = 17,
     IDC_SWITCH_DATA = 18,
     IDC_GET_TIME_STAMP = 19,
+    IDC_CONTACT_WAIT_DATA = 20,
 #ifdef MEM_32KB
     IDC_MAX_SWITCH_COUNT = 13,
     IDC_CLEAR_SWITCH_COUNT = 14,
