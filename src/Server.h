@@ -34,8 +34,8 @@ private:
 
     bool readBinaryCommand();
     void processBinaryInstruction();
-    ErrorCode processBinaryRead();
-    ErrorCode processBinarySet();
+    ErrorCode processBinaryRead(InstructionDataCode dataCode);
+    ErrorCode processBinarySet(InstructionDataCode dataCode);
     void sendSettings(bool addResultCode = true);
     uint8_t saveSettings();
     ErrorCode sendState(bool addResultCode = true);
@@ -43,8 +43,11 @@ private:
     ErrorCode sendId(bool addResultCode = true);
     ErrorCode saveId();
     ErrorCode sendInterruptPin(bool addResultCode = true);
+    ErrorCode saveInterruptPin();
+#ifdef MEM_32KB
     ErrorCode sendAll();
     ErrorCode saveAll();
+#endif
     ErrorCode sendRelayState();
     ErrorCode saveRelayState();
 #ifdef MEM_32KB
@@ -55,7 +58,6 @@ private:
     ErrorCode sendRelayMonitorOn();
     ErrorCode sendRelayControlOn();
 #endif
-    ErrorCode saveInterruptPin();
     ErrorCode send(uint8_t(*getter)(Server*, uint8_t), InstructionDataCode dataCode = IDC_UNKNOWN);
     ErrorCode save(void(*setter)(Server*, uint8_t, uint8_t));
     ErrorCode readUint8FromCmdBuff(uint8_t &result);
@@ -73,16 +75,12 @@ private:
     ErrorCode saveMaxSwitchCount();
     ErrorCode clearSwitchCount();
 #endif
-
     ErrorCode sendStateFixSettings();
-
     ErrorCode saveStateFixSettings();
-
     static ErrorCode sendRemoteTimestamp();
-
     ErrorCode saveRemoteTimestamp();
-
-    ErrorCode sendSwithcData();
+    static ErrorCode sendSwitchData();
+    ErrorCode sendFixData();
 };
 
 

@@ -12,6 +12,9 @@ enum InstructionCode {
     IC_SET = 2,
     IC_SUCCESS = 3,
     IC_ERROR = 4,
+    IC_EXECUTE = 5,
+    IC_REQUEST = 6,
+    IC_RESPONSE = 7,
     IC_UNKNOWN = 16
 };
 
@@ -33,7 +36,9 @@ enum InstructionDataCode {
     IDC_RELAY_STATE_CHANGED = 14,
     IDC_REMOTE_TIMESTAMP = 15,
     IDC_VERSION = 16,
-    IDC_SWITCH_DATA = 17,
+    IDC_FIX_DATA = 17,
+    IDC_SWITCH_DATA = 18,
+    IDC_GET_TIME_STAMP = 19,
 #ifdef MEM_32KB
     IDC_MAX_SWITCH_COUNT = 13,
     IDC_CLEAR_SWITCH_COUNT = 14,
@@ -88,6 +93,17 @@ inline size_t sendSerial(uint16_t value, Stream &serial = Serial) {
     return sum;
 }
 
+inline size_t sendSerial(int32_t value, Stream &serial = Serial) {
+    uint8_t sum = 0;
+    uint8_t shift = 24;
+    for (uint8_t i = 0; i < 3; i++) {
+        sum += serial.write((uint8_t) ((value >> shift) & 0xFF) );
+        shift -= 8;
+    }
+    sum += serial.write(value & 0xFF);
+    return sum;
+}
+
 inline size_t sendSerial(uint32_t value, Stream &serial = Serial) {
     uint8_t sum = 0;
     uint8_t shift = 24;
@@ -118,8 +134,15 @@ inline size_t sendSerial(const char *buffer, Stream &serial = Serial) {
     return serial.write(buffer);
 }
 
-inline void sendStartAnswer(InstructionDataCode code) {
+inline void sendStartResponse(InstructionDataCode code) {
     sendSerial(IC_NONE);
+    sendSerial(IC_RESPONSE);
+    sendSerial(code);
+}
+
+inline void sendStartRequest(InstructionDataCode code) {
+    sendSerial(IC_NONE);
+    sendSerial(IC_REQUEST);
     sendSerial(code);
 }
 

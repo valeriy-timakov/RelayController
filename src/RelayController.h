@@ -8,6 +8,8 @@
 #include "Arduino.h"
 #include "Settings.h"
 
+#define SWITCHES_DATA_BUFFER_SIZE 50
+
 
 class RelayController {
 public:
@@ -25,6 +27,10 @@ public:
     static void setSwitchLimitIntervalSec(uint16_t switchLimitIntervalSec);
     static uint32_t getRemoteTimeStamp() ;
     static void setRemoteTimeStamp(uint32_t remoteTimeStamp);
+    static uint8_t getFixTryCount(uint8_t relayIdx);
+    static int32_t getFixLastTryTime(uint8_t relayIdx);
+    static uint8_t getSwitchData(uint32_t **data);
+    static void clearSwitchData();
 
 #ifdef MEM_32KB
     uint8_t getMaxSwitchCount(uint8_t relayIdx) const;

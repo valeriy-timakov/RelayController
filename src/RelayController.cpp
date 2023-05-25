@@ -12,6 +12,7 @@
 #define CONTACT_READY_WAIT_DATA_LAST_CHANGE_LENGTH CONTACT_READY_WAIT_DATA_LAST_STATE_BIT
 #define CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK BF_MASK(0, CONTACT_READY_WAIT_DATA_LAST_CHANGE_LENGTH)
 #define DEFAULT_CONTACT_READY_WAIT_DELAY 50
+#define REQUEST_TIME_STAMP_INTERVAL 10
 uint16_t contactReadyWaitDelay = DEFAULT_CONTACT_READY_WAIT_DELAY;
 uint16_t switchLimitIntervalSec = 600;
 
@@ -165,9 +166,11 @@ uint16_t lastRelayState = 0;
 uint16_t temporaryDisabledControls = 0;
 uint32_t startLocalTimeSec = 0;
 uint32_t remoteTimeStamp = 0;
-uint32_t stateSwithcTimes[MAX_RELAYS_COUNT];
-uint32_t stateFixTimes[MAX_RELAYS_COUNT];
+uint32_t stateSwitchDatas[SWITCHES_DATA_BUFFER_SIZE];
+uint8_t stateSwitchCount = 0;
+int32_t stateFixTimes[MAX_RELAYS_COUNT];
 uint8_t stateFixCount[MAX_RELAYS_COUNT];
+uint32_t lastTimeStampRequsetTime = 0;
 
 
 void switchRelayState(const RelaySettings &settings, uint8_t i);
@@ -218,13 +221,16 @@ void setRelayState_(const RelaySettings &relaySettings, bool switchedOn, uint8_t
         Serial.write(switchedOn ? 0x01 : 0x00);
         writePinStateForse(setPinSettings, switchedOn);
         setLastRelayState(relayIdx, switchedOn);
-        stateSwithcTimes[relayIdx] = getLocalTimeSec();
+        uint32_t switchTimeData = getLocalTimeSec() + remoteTimeStamp;
+        switchTimeData = (switchTimeData & 0x07ffffff) | (((uint32_t)relayIdx) << 28);
+        if (switchedOn) {
+            switchTimeData |= 1l << 27;
+        }
+        stateSwitchDatas[stateSwitchCount++] = switchTimeData;
         stateFixTimes[relayIdx] = getLocalTimeSec();
         stateFixCount[relayIdx] = 0;
-        sendStartAnswer(IDC_RELAY_STATE_CHANGED);
-        sendSerial(relayIdx);
-        sendSerial(switchedOn);
-        sendSerial(remoteTimeStamp + stateSwithcTimes[relayIdx]);
+        sendStartResponse(IDC_RELAY_STATE_CHANGED);
+        sendSerial(switchTimeData);
 
     }
     Serial.write(0xfa);
@@ -333,15 +339,21 @@ void RelayController::setup(Settings &settings) {
     for (auto& lastChangeStartTime : lastChangeWaitDatas) {
         lastChangeStartTime = ContactWaitData();
     }
-    startLocalTimeSec = millis() / MILLIS_PER_SECOND;
+    startLocalTimeSec = 0;
+    remoteTimeStamp = 0;
     for (uint8_t i = 0; i < MAX_RELAYS_COUNT; i++) {
-        stateSwithcTimes[i] = 0;
+        stateSwitchDatas[i] = 0;
         stateFixTimes[i] = 0;
         stateFixCount[i] = 0;
     }
+    stateSwitchCount = 0;
 }
 
 void RelayController::idle() {
+    if (startLocalTimeSec == 0 && (lastTimeStampRequsetTime - getLocalTimeSec() > REQUEST_TIME_STAMP_INTERVAL)) {
+        sendStartRequest(IDC_GET_TIME_STAMP);
+        lastTimeStampRequsetTime = getLocalTimeSec();
+    }
 #ifdef MEM_32KB
     for (uint8_t i = 0; i < settings_.getRelaysCount(); i++) {
         switchLimiters[i].update();
@@ -406,8 +418,37 @@ uint32_t RelayController::getRemoteTimeStamp() {
 
 void RelayController::setRemoteTimeStamp(uint32_t value) {
     remoteTimeStamp = value;
-    //TODO: check if need to update local time
-    startLocalTimeSec = millis() / MILLIS_PER_SECOND;
+    uint32_t newStartLocalTimeSec = millis() / MILLIS_PER_SECOND;
+    uint32_t diff = newStartLocalTimeSec - startLocalTimeSec;
+    for (uint8_t i = 0; i < settings_.getRelaysCount(); i++) {
+        stateFixTimes[i] -= diff;
+    }
+    startLocalTimeSec = newStartLocalTimeSec;
+
+
+}
+
+uint8_t RelayController::getFixTryCount(uint8_t relayIdx) {
+    if (relayIdx >= settings_.getRelaysCount()) {
+        return 0;
+    }
+    return stateFixCount[relayIdx];
+}
+
+int32_t RelayController::getFixLastTryTime(uint8_t relayIdx) {
+    if (relayIdx >= settings_.getRelaysCount()) {
+        return 0;
+    }
+    return stateFixTimes[relayIdx];
+}
+
+uint8_t RelayController::getSwitchData(uint32_t **data) {
+    *data = (uint32_t*)stateSwitchDatas;
+    return stateSwitchCount;
+}
+
+void RelayController::clearSwitchData() {
+    stateSwitchCount = 0;
 }
 
 #ifdef MEM_32KB
