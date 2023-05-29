@@ -22,20 +22,28 @@ inline void sendSerialDbg(uint64_t v) { sendSerial(v); }
 struct ContactWaitData {
 private:
     uint16_t data;
+
+#ifdef MEM_32KB
     uint32_t startWaitSec;
+#endif
 
     [[nodiscard]] inline bool isWaitFinished() const {
         return (millis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK) - (data & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK)
             >= (settings_.getStateFixSettings().getContactReadyWaitDelayMillis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK);
     }
     inline void startWait(bool pinSet) {
+
+#ifdef MEM_32KB
         startWaitSec = RelayController::getRemoteTimeSec();
+#endif
         data = (1 << CONTACT_READY_WAIT_DATA_STARTED_BIT) | (millis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK);
         setBit(data, CONTACT_READY_WAIT_DATA_LAST_STATE_BIT, pinSet);
     }
     inline void stopWait() {
         data = 0;
+#ifdef MEM_32KB
         startWaitSec = 0;
+#endif
     }
     inline void update(bool value) {
         bool lastStateOn = CHECK_BIT(data, CONTACT_READY_WAIT_DATA_LAST_STATE_BIT);
@@ -45,7 +53,11 @@ private:
         }
     }
 public:
-    ContactWaitData() : data(0), startWaitSec(0) {}
+    ContactWaitData() : data(0)
+#ifdef MEM_32KB
+            , startWaitSec(0)
+#endif
+    {}
     [[nodiscard]] inline bool isWaitStarted() const {
         return CHECK_BIT(data, CONTACT_READY_WAIT_DATA_STARTED_BIT);
     }
@@ -61,9 +73,12 @@ public:
             return false;
         }
     }
+
+#ifdef MEM_32KB
     [[nodiscard]] inline uint32_t getStartWaitSec() const {
         return startWaitSec;
     }
+#endif
 };
 
 
@@ -159,20 +174,18 @@ struct SwitchLimiter {
         count = 0;
     }
 };
-#endif
 
-ContactWaitData lastChangeWaitDatas[MAX_RELAYS_COUNT];
-#ifdef MEM_32KB
 SwitchLimiter switchLimiters[MAX_RELAYS_COUNT];
+uint32_t stateSwitchDatas[SWITCHES_DATA_BUFFER_SIZE];
+uint8_t stateSwitchCount = 0;
 #endif
+ContactWaitData lastChangeWaitDatas[MAX_RELAYS_COUNT];
 bool lastInterruptPinHigh = false;
 uint16_t lastControlState = 0;
 uint16_t lastRelayState = 0;
 uint16_t temporaryDisabledControls = 0;
 uint32_t startLocalTimeSec = 0;
 uint32_t remoteTimeStamp = 0;
-uint32_t stateSwitchDatas[SWITCHES_DATA_BUFFER_SIZE];
-uint8_t stateSwitchCount = 0;
 int32_t stateFixTimes[MAX_RELAYS_COUNT];
 uint8_t stateFixCount[MAX_RELAYS_COUNT];
 uint32_t lastTimeStampRequsetTime = 0;
@@ -230,7 +243,9 @@ void setRelayState_(const RelaySettings &relaySettings, bool switchedOn, uint8_t
         if (internal) {
             switchTimeData |= 1l << 26;
         }
+#ifdef MEM_32KB
         stateSwitchDatas[stateSwitchCount++] = switchTimeData;
+#endif
         stateFixTimes[relayIdx] = getLocalTimeSec();
         stateFixCount[relayIdx] = 0;
         sendStartSignal(IDC_RELAY_STATE_CHANGED);
@@ -358,11 +373,15 @@ void RelayController::setup(Settings &settings) {
     startLocalTimeSec = 0;
     remoteTimeStamp = 0;
     for (uint8_t i = 0; i < MAX_RELAYS_COUNT; i++) {
+#ifdef MEM_32KB
         stateSwitchDatas[i] = 0;
+#endif
         stateFixTimes[i] = 0;
         stateFixCount[i] = 0;
     }
+#ifdef MEM_32KB
     stateSwitchCount = 0;
+#endif
 }
 
 void RelayController::idle() {
@@ -428,6 +447,12 @@ void RelayController::setRemoteTimeStamp(uint32_t value) {
 
 }
 
+uint32_t RelayController::getRemoteTimeSec() {
+    return getLocalTimeSec() + remoteTimeStamp;
+}
+
+#ifdef MEM_32KB
+
 uint8_t RelayController::getFixTryCount(uint8_t relayIdx) {
     if (relayIdx >= settings_.getRelaysCount()) {
         return 0;
@@ -453,13 +478,9 @@ uint32_t RelayController::getContactStartWait(uint8_t relayIdx) {
     return lastChangeWaitDatas[relayIdx].getStartWaitSec();
 }
 
-uint32_t RelayController::getRemoteTimeSec() {
-    return getLocalTimeSec() + remoteTimeStamp;
-}
-
-#ifdef MEM_32KB
 void RelayController::clearSwitchCount(uint8_t relayIdx) {
     switchLimiters[relayIdx].clear();
 }
+
 #endif
 

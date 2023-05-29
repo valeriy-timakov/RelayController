@@ -31,10 +31,12 @@ private:
     bool commandPocessed = false;
     uint32_t lastPacketTime = 0;
     uint8_t lastPacketSize = 0;
+#ifdef MEM_32KB
     uint16_t minCycleDuration = 0xffff;
     uint16_t maxCycleDuration = 0;
     uint64_t cyclesCount = 0;
     uint64_t lastCycleTime = 0;
+#endif
 
     bool readBinaryCommand();
     void processBinaryInstruction();
@@ -61,12 +63,14 @@ private:
     ErrorCode saveRelaySwitchedOn();
     ErrorCode sendRelayMonitorOn();
     ErrorCode sendRelayControlOn();
-#endif
     ErrorCode send(uint8_t(*getter)(Server*, uint8_t), InstructionDataCode dataCode = IDC_UNKNOWN);
     ErrorCode save(void(*setter)(Server*, uint8_t, uint8_t));
+#endif
     ErrorCode readUint8FromCmdBuff(uint8_t &result);
     ErrorCode readUint32FromCommandBuffer(uint32_t &result);
+#ifdef MEM_32KB
     ErrorCode readRelayIndexFromCmdBuff(uint8_t &result);
+#endif
     ErrorCode readRelayCountFromCmdBuff(uint8_t &count);
     static uint8_t readRelayStateBits(uint8_t relayIndex);
     ErrorCode readUint16FromCmdBuff(uint16_t &result);
@@ -74,15 +78,14 @@ private:
     ErrorCode sendSwitchCountingSettings();
     ErrorCode saveSwitchCountingSettings();
     ErrorCode clearSwitchCount();
+    static ErrorCode sendSwitchData();
+    ErrorCode sendFixData();
+    ErrorCode sendContactWaitData();
 #endif
     ErrorCode sendStateFixSettings();
     ErrorCode saveStateFixSettings();
     static ErrorCode sendRemoteTimestamp();
     ErrorCode saveRemoteTimestamp();
-    static ErrorCode sendSwitchData();
-    ErrorCode sendFixData();
-
-    ErrorCode sendContactWaitData();
 };
 
 
