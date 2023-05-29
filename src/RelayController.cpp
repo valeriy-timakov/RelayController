@@ -6,7 +6,6 @@
 #include "CommunicationProtocol.h"
 
 
-
 #define CONTACT_READY_WAIT_DATA_STARTED_BIT 15
 #define CONTACT_READY_WAIT_DATA_LAST_STATE_BIT (CONTACT_READY_WAIT_DATA_STARTED_BIT- 1)
 #define CONTACT_READY_WAIT_DATA_LAST_CHANGE_LENGTH CONTACT_READY_WAIT_DATA_LAST_STATE_BIT
@@ -283,11 +282,6 @@ void checkAndProcessChanges() {
             bool ctrlPinSet = checkPinState(ctrlPinSettings);
             bool lastSwithedOn = getLastControlState(i);
             auto &lastWaitData = lastChangeWaitDatas[i];
-
-            if (lastSwithedOn != ctrlPinSet) {
-                sendStartSignal(IDC_CONTROL_STATE_CHANGED);
-                sendSerial((uint8_t)((ctrlPinSet ? 0x10 : 0x00) | (i & 0xf)));
-            }
             if (
                 (lastSwithedOn != ctrlPinSet || lastWaitData.isWaitStarted()) &&
                 lastWaitData.checkReady(ctrlPinSet)
@@ -295,8 +289,12 @@ void checkAndProcessChanges() {
                 && switchLimiters[i].tryAdd()
                 #endif
             ) {
-                if (relaySettings.isControlPinSwitchByPush() && ctrlPinSet) {
-                    switchRelayState(relaySettings, i);
+                sendStartSignal(IDC_CONTROL_STATE_CHANGED);
+                sendSerial((uint8_t)((ctrlPinSet ? 0x10 : 0x00) | (i & 0xf)));
+                if (relaySettings.isControlPinSwitchByPush()) {
+                    if (ctrlPinSet) {
+                        switchRelayState(relaySettings, i);
+                    }
                 } else {
                     setRelayState_(relaySettings, ctrlPinSet, i, true);
                 }
