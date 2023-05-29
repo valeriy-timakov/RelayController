@@ -8,29 +8,31 @@
 
 
 #define CONTACT_READY_WAIT_DATA_STARTED_BIT 15
-#define CONTACT_READY_WAIT_DATA_LAST_STATE_BIT 14
+#define CONTACT_READY_WAIT_DATA_LAST_STATE_BIT (CONTACT_READY_WAIT_DATA_STARTED_BIT- 1)
 #define CONTACT_READY_WAIT_DATA_LAST_CHANGE_LENGTH CONTACT_READY_WAIT_DATA_LAST_STATE_BIT
 #define CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK BF_MASK(0, CONTACT_READY_WAIT_DATA_LAST_CHANGE_LENGTH)
-#define DEFAULT_CONTACT_READY_WAIT_DELAY 50
 #define REQUEST_TIME_STAMP_INTERVAL 10
-uint16_t contactReadyWaitDelay = DEFAULT_CONTACT_READY_WAIT_DELAY;
-uint16_t switchLimitIntervalSec = 600;
 
-uint32_t getRemoteTimeSec();
-
+SettingsPtr settings_;
+/*
+inline void sendSerialDbg(uint8_t v) { sendSerial(v); }
+inline void sendSerialDbg(uint16_t v) { sendSerial(v); }
+inline void sendSerialDbg(uint32_t v) { sendSerial(v); }
+inline void sendSerialDbg(uint64_t v) { sendSerial(v); }
+*/
 struct ContactWaitData {
-    uint16_t data = 0;
-    uint32_t startWaitSec = 0;
-    [[nodiscard]] inline bool isWaitStarted() const {
-        return CHECK_BIT(data, CONTACT_READY_WAIT_DATA_STARTED_BIT);
-    }
+private:
+    uint16_t data;
+    uint32_t startWaitSec;
+
     [[nodiscard]] inline bool isWaitFinished() const {
-        return (millis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK) - (data & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK) >= contactReadyWaitDelay;
+        return (millis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK) - (data & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK)
+            >= (settings_.getStateFixSettings().getContactReadyWaitDelayMillis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK);
     }
-    inline void startWait() {
-        startWaitSec = getRemoteTimeSec();
-        data = millis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK;
-        setBit(data, CONTACT_READY_WAIT_DATA_STARTED_BIT, true);
+    inline void startWait(bool pinSet) {
+        startWaitSec = RelayController::getRemoteTimeSec();
+        data = (1 << CONTACT_READY_WAIT_DATA_STARTED_BIT) | (millis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK);
+        setBit(data, CONTACT_READY_WAIT_DATA_LAST_STATE_BIT, pinSet);
     }
     inline void stopWait() {
         data = 0;
@@ -39,13 +41,18 @@ struct ContactWaitData {
     inline void update(bool value) {
         bool lastStateOn = CHECK_BIT(data, CONTACT_READY_WAIT_DATA_LAST_STATE_BIT);
         if (lastStateOn != value) {
-            data = (data & ~CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK) | (millis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK);
+            data = (1 << CONTACT_READY_WAIT_DATA_STARTED_BIT) | (millis() & CONTACT_READY_WAIT_DATA_LAST_CHANGE_MASK);
             setBit(data, CONTACT_READY_WAIT_DATA_LAST_STATE_BIT, value);
         }
     }
+public:
+    ContactWaitData() : data(0), startWaitSec(0) {}
+    [[nodiscard]] inline bool isWaitStarted() const {
+        return CHECK_BIT(data, CONTACT_READY_WAIT_DATA_STARTED_BIT);
+    }
     inline bool checkReady(bool ctrlPinSet) {
         if (!isWaitStarted()) {
-            startWait();
+            startWait(ctrlPinSet);
             return false;
         } else if (isWaitFinished()) {
             stopWait();
@@ -62,7 +69,6 @@ struct ContactWaitData {
 
 
 #ifdef MEM_32KB
-#define MAX_SWITCH_LIMIT_COUNT 20
 #define SWITCH_LIMIT_DATA_LENGTH 4
 #define SWITCH_LIMIT_DATA_MASK BF_MASK(0, SWITCH_LIMIT_DATA_LENGTH)
 #define SWITCH_LIMIT_MONITOR_DATA_CAPACITY (1 << SWITCH_LIMIT_DATA_LENGTH)
@@ -74,9 +80,9 @@ struct ContactWaitData {
 struct SwitchLimiter {
     uint8_t data[SWITCH_LIMITER_DATA_BYTES_COUNT];
     uint8_t count = 0;
-    uint8_t maxCount = 0;// maxCount == 0 means no limit
 
     void update() {
+        uint16_t switchLimitIntervalSec = settings_.getSwitchCountingSettingsRef().getSwitchLimitIntervalSec();
         auto monitoringInterval = (uint32_t) MILLIS_PER_SECOND * switchLimitIntervalSec * MONITORING_INTERVAL_PER_CONTROL_INTERVAL_RATIO;
         auto stamp = (uint8_t) ( ( millis() % monitoringInterval ) * SWITCH_LIMIT_MONITOR_DATA_CAPACITY / monitoringInterval);
         auto controlInterval = (uint32_t) MILLIS_PER_SECOND * switchLimitIntervalSec;
@@ -124,12 +130,17 @@ struct SwitchLimiter {
     }
 
     bool tryAdd() {
-        if (maxCount == 0) {
+        uint8_t switchMaxCount = settings_.getSwitchCountingSettingsRef().getMaxSwitchCount();
+        if (switchMaxCount == 0) {
             return true;
         }
-        if (count >= maxCount) {
+        if (switchMaxCount > MAX_SWITCH_LIMIT_COUNT) {
+            switchMaxCount = MAX_SWITCH_LIMIT_COUNT;
+        }
+        if (count >= switchMaxCount) {
             return false;
         }
+        uint16_t switchLimitIntervalSec = settings_.getSwitchCountingSettingsRef().getSwitchLimitIntervalSec();
         auto monitoringInterval = (uint32_t) MILLIS_PER_SECOND * switchLimitIntervalSec * MONITORING_INTERVAL_PER_CONTROL_INTERVAL_RATIO;
         auto stamp = (uint8_t)( ( (millis() % monitoringInterval) ) * SWITCH_LIMIT_MONITOR_DATA_CAPACITY / monitoringInterval);
         if (count < MAX_SWITCH_LIMIT_COUNT - 1) {
@@ -148,18 +159,6 @@ struct SwitchLimiter {
     void clear() {
         count = 0;
     }
-
-    bool setMaxCount(uint8_t _maxCount) {
-        if (_maxCount > MAX_SWITCH_LIMIT_COUNT) {
-            return false;
-        }
-        maxCount = _maxCount;
-        return true;
-    }
-
-    uint8_t getMaxCount() {
-        return maxCount;
-    }
 };
 #endif
 
@@ -168,7 +167,6 @@ ContactWaitData lastChangeWaitDatas[MAX_RELAYS_COUNT];
 SwitchLimiter switchLimiters[MAX_RELAYS_COUNT];
 #endif
 bool lastInterruptPinHigh = false;
-SettingsPtr settings_;
 uint16_t lastControlState = 0;
 uint16_t lastRelayState = 0;
 uint16_t temporaryDisabledControls = 0;
@@ -179,6 +177,7 @@ uint8_t stateSwitchCount = 0;
 int32_t stateFixTimes[MAX_RELAYS_COUNT];
 uint8_t stateFixCount[MAX_RELAYS_COUNT];
 uint32_t lastTimeStampRequsetTime = 0;
+uint16_t lastMonitoringState = 0;
 
 
 void switchRelayState(const RelaySettings &settings, uint8_t i);
@@ -215,10 +214,6 @@ uint32_t getLocalTimeSec() {
     return millis() / MILLIS_PER_SECOND - startLocalTimeSec;
 }
 
-uint32_t getRemoteTimeSec() {
-    return getLocalTimeSec() + remoteTimeStamp;
-}
-
 inline void writePinStateForse(const PinSettings &pinSettings, bool switchedOn) {
     digitalWrite(pinSettings.getPin(), pinSettings.isInversed() != switchedOn ? HIGH : LOW);
 }
@@ -226,14 +221,9 @@ inline void writePinStateForse(const PinSettings &pinSettings, bool switchedOn) 
 void setRelayState_(const RelaySettings &relaySettings, bool switchedOn, uint8_t relayIdx, bool internal) {
     const PinSettings &setPinSettings = relaySettings.getSetPinSettings();
     if (setPinSettings.isAllowedPin() && setPinSettings.isEnabled()) {
-        Serial.write(0xfd);
-        Serial.write(relayIdx);
-        Serial.write(setPinSettings.getPin());
-        Serial.write(setPinSettings.isInversed()  ? 0x01 : 0x00);
-        Serial.write(switchedOn ? 0x01 : 0x00);
         writePinStateForse(setPinSettings, switchedOn);
         setLastRelayState(relayIdx, switchedOn);
-        uint32_t switchTimeData = getRemoteTimeSec();
+        uint32_t switchTimeData = RelayController::getRemoteTimeSec();
         switchTimeData = (switchTimeData & 0x03ffffff) | (((uint32_t)relayIdx) << 28);
         if (switchedOn) {
             switchTimeData |= 1l << 27;
@@ -244,11 +234,10 @@ void setRelayState_(const RelaySettings &relaySettings, bool switchedOn, uint8_t
         stateSwitchDatas[stateSwitchCount++] = switchTimeData;
         stateFixTimes[relayIdx] = getLocalTimeSec();
         stateFixCount[relayIdx] = 0;
-        sendStartResponse(IDC_RELAY_STATE_CHANGED);
+        sendStartSignal(IDC_RELAY_STATE_CHANGED);
         sendSerial(switchTimeData);
 
     }
-    Serial.write(0xfa);
 }
 
 void checkAndFixRelayStates() {
@@ -257,6 +246,17 @@ void checkAndFixRelayStates() {
         const PinSettings &monitoringPinSettings = relaySettings.getMonitorPinSettings();
         const PinSettings &setPinSettings = relaySettings.getSetPinSettings();
         bool switchedOnByMonitoring = checkPinState(monitoringPinSettings);
+        bool lastMonitoringSwithedOn = CHECK_BIT(lastMonitoringState, relayIdx);
+        if (switchedOnByMonitoring != lastMonitoringSwithedOn) {
+            uint8_t data = relayIdx & 0xf;
+            if (switchedOnByMonitoring) {
+                data |= 0x10;
+            }
+            sendStartSignal(IDC_MONITORING_STATE_CHANGED);
+            sendSerial(data);
+            sendSerial(RelayController::getRemoteTimeSec());
+            setBit(lastMonitoringState, relayIdx, switchedOnByMonitoring);
+        }
         bool switchedOn = getLastRelayState(relayIdx);
         if (
             switchedOnByMonitoring != switchedOn && monitoringPinSettings.isEnabled()
@@ -282,7 +282,12 @@ void checkAndProcessChanges() {
         if (ctrlPinSettings.isEnabled() && setPinSettings.isEnabled() && !isControlTemporaryDisabled_(i)) {
             bool ctrlPinSet = checkPinState(ctrlPinSettings);
             bool lastSwithedOn = getLastControlState(i);
-            auto lastWaitData = lastChangeWaitDatas[i];
+            auto &lastWaitData = lastChangeWaitDatas[i];
+
+            if (lastSwithedOn != ctrlPinSet) {
+                sendStartSignal(IDC_CONTROL_STATE_CHANGED);
+                sendSerial((uint8_t)((ctrlPinSet ? 0x10 : 0x00) | (i & 0xf)));
+            }
             if (
                 (lastSwithedOn != ctrlPinSet || lastWaitData.isWaitStarted()) &&
                 lastWaitData.checkReady(ctrlPinSet)
@@ -290,7 +295,6 @@ void checkAndProcessChanges() {
                 && switchLimiters[i].tryAdd()
                 #endif
             ) {
-                Serial.write(0xfe);//relay change
                 if (relaySettings.isControlPinSwitchByPush() && ctrlPinSet) {
                     switchRelayState(relaySettings, i);
                 } else {
@@ -305,7 +309,6 @@ void checkAndProcessChanges() {
 void onControlPinChange() {
     bool newInterruptPinHigh = digitalRead(settings_.getControlInterruptPin()) == HIGH;
     if (newInterruptPinHigh != lastInterruptPinHigh) {
-        Serial.write(0xff);//interrupt enter
         checkAndProcessChanges();
         lastInterruptPinHigh = newInterruptPinHigh;
     }
@@ -366,7 +369,7 @@ void RelayController::setup(Settings &settings) {
 
 void RelayController::idle() {
     if (startLocalTimeSec == 0 && (lastTimeStampRequsetTime - getLocalTimeSec() > REQUEST_TIME_STAMP_INTERVAL)) {
-        sendStartRequest(IDC_GET_TIME_STAMP);
+        sendStartSignal(IDC_GET_TIME_STAMP);
         lastTimeStampRequsetTime = getLocalTimeSec();
     }
 #ifdef MEM_32KB
@@ -411,22 +414,6 @@ void RelayController::setRelayState(uint8_t relayIdx, bool switchedOn) {
     setRelayState_(settings_.getRelaySettingsRef(relayIdx), switchedOn, relayIdx, false);
 }
 
-uint16_t RelayController::getContactReadyWaitDelay() {
-    return contactReadyWaitDelay;
-}
-
-void RelayController::setContactReadyWaitDelay(uint16_t value) {
-    contactReadyWaitDelay = value;
-}
-
-uint16_t RelayController::getSwitchLimitIntervalSec() {
-    return switchLimitIntervalSec;
-}
-
-void RelayController::setSwitchLimitIntervalSec(uint16_t value) {
-    switchLimitIntervalSec = value;
-}
-
 uint32_t RelayController::getRemoteTimeStamp() {
     return remoteTimeStamp;
 }
@@ -459,26 +446,20 @@ int32_t RelayController::getFixLastTryTime(uint8_t relayIdx) {
 
 uint8_t RelayController::getSwitchData(uint32_t **data) {
     *data = (uint32_t*)stateSwitchDatas;
-    return stateSwitchCount;
-}
-
-void RelayController::clearSwitchData() {
+    uint8_t stateSwitchCount_ = stateSwitchCount;
     stateSwitchCount = 0;
+    return stateSwitchCount_;
 }
 
 uint32_t RelayController::getContactStartWait(uint8_t relayIdx) {
     return lastChangeWaitDatas[relayIdx].getStartWaitSec();
 }
 
+uint32_t RelayController::getRemoteTimeSec() {
+    return getLocalTimeSec() + remoteTimeStamp;
+}
+
 #ifdef MEM_32KB
-uint8_t RelayController::getMaxSwitchCount(uint8_t relayIdx) const {
-    return switchLimiters[relayIdx].getMaxCount();
-}
-
-void RelayController::setMaxSwitchCount(uint8_t relayIdx, uint8_t value) {
-    switchLimiters[relayIdx].setMaxCount(value);
-}
-
 void RelayController::clearSwitchCount(uint8_t relayIdx) {
     switchLimiters[relayIdx].clear();
 }

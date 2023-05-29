@@ -15,6 +15,17 @@ void Settings::load() {
     EEPROM.get(CONTROLLER_ID_LOCATION, controllerId);
     EEPROM.get(CONTROL_INTERRUPT_PIN_LOCATION, controlInterruptPin);
     EEPROM.get(STATE_FIX_SETTINGS_LOCATION, stateFixSettings);
+    if (
+        stateFixSettings.getContactReadyWaitDelayMillis() == 0xffff &&
+        stateFixSettings.getMinWaitDelaySec() == 0xff &&
+        stateFixSettings.getMaxCount() == 0xff &&
+        stateFixSettings.getDelayMillis() == 0xffff
+    ) {
+        saveStateFixSettings(StateFixSettings());
+    }
+#ifdef MEM_32KB
+    EEPROM.get(STATE_SWITCH_COUNT_SETTINGS_LOCATION, switchCountingSettings);
+#endif
     for (uint8_t i = 0; i < relaysCount; i++) {
         EEPROM.get(RELAYS_SETTINGS_START_LOCATION + i * sizeof (RelaySettings), relaySettings[i]);
     }
@@ -63,37 +74,18 @@ void Settings::saveStateFixSettings(const StateFixSettings &value) {
     EEPROM.put(STATE_FIX_SETTINGS_LOCATION, stateFixSettings);
 }
 
-uint8_t Settings::getRelaysCount() const {
-    return relaysCount;
+#ifdef MEM_32KB
+void Settings::saveSwitchCountingSettings(const SwitchCountingSettings &value) {
+    switchCountingSettings = value;
+    EEPROM.put(STATE_SWITCH_COUNT_SETTINGS_LOCATION, switchCountingSettings);
 }
-
-const RelaySettings &Settings::getRelaySettingsRef(uint8_t relayIdx) const {
-    return relaySettings[relayIdx];
-}
-
-uint32_t Settings::getControllerId() const {
-    return controllerId;
-}
-
-bool Settings::isReady() const {
-    return ready;
-}
-
-uint8_t Settings::getControlInterruptPin() const {
-    return controlInterruptPin;
-}
+#endif
 
 SettingsPtr Settings::getRelaysSettingsPtr() const {
     return SettingsPtr(this);
 }
 
-const StateFixSettings &Settings::getStateFixSettings() const {
-    return stateFixSettings;
-}
 
-void Settings::setOnSettingsChanged(void (*value)())  {
-    onSettingsChanged = value;
-}
 
 
 

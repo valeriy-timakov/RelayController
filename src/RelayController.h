@@ -9,6 +9,7 @@
 #include "Settings.h"
 
 #define SWITCHES_DATA_BUFFER_SIZE 50
+#define MAX_SWITCH_LIMIT_COUNT 20
 
 
 class RelayController {
@@ -21,22 +22,15 @@ public:
     static bool checkControlPinState(uint8_t relayIdx);
     static bool getRelayLastState(uint8_t relayIdx);
     static void setRelayState(uint8_t relayIdx, bool swithedOn);
-    static uint16_t getContactReadyWaitDelay() ;
-    static void setContactReadyWaitDelay(uint16_t contactReadyWaitDelay);
-    static uint16_t getSwitchLimitIntervalSec() ;
-    static void setSwitchLimitIntervalSec(uint16_t switchLimitIntervalSec);
     static uint32_t getRemoteTimeStamp() ;
     static void setRemoteTimeStamp(uint32_t remoteTimeStamp);
     static uint8_t getFixTryCount(uint8_t relayIdx);
     static int32_t getFixLastTryTime(uint8_t relayIdx);
     static uint8_t getSwitchData(uint32_t **data);
-    static void clearSwitchData();
     static uint32_t getContactStartWait(uint8_t relayIdx);
-
+    static uint32_t getRemoteTimeSec();
 #ifdef MEM_32KB
-    uint8_t getMaxSwitchCount(uint8_t relayIdx) const;
-    void setMaxSwitchCount(uint8_t relayIdx, uint8_t maxSwitchCount);
-    void clearSwitchCount(uint8_t relayIdx);
+    static void clearSwitchCount(uint8_t relayIdx);
 #endif
 
 private:

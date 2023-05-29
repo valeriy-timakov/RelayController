@@ -21,6 +21,15 @@ void Server::setup() {
 }
 
 void Server::idle() {
+    uint64_t currTime = millis();
+    uint16_t cycleDuration = currTime - lastCycleTime;
+    lastCycleTime = currTime;
+    if (cycleDuration > maxCycleDuration) {
+        maxCycleDuration = cycleDuration;
+    } else if (cycleDuration < minCycleDuration) {
+        minCycleDuration = cycleDuration;
+    }
+    cyclesCount++;
     while (readBinaryCommand()) {
         processBinaryInstruction();
     }
@@ -165,18 +174,14 @@ ErrorCode Server::processBinaryRead(InstructionDataCode code) {
             return sendRelayControlOn();
 #endif
         case IDC_INTERRUPT_PIN:
-            return sendInterruptPin(true);
-        case IDC_CONTACT_READY_WAIT_DELAY:
-            return sendContactReadyWaitDelay();
-        case IDC_SWITCH_COUNT_INTERVAL_SEC:
-            return sendSwitchCountIntervalSec();
+            return sendInterruptPin();
         case IDC_STATE_FIX_SETTINGS:
             return sendStateFixSettings();
         case IDC_REMOTE_TIMESTAMP:
             return sendRemoteTimestamp();
 #ifdef MEM_32KB
-        case IDC_MAX_SWITCH_COUNT:
-            return sendMaxSwitchCount();
+        case IDC_SWITCH_COUNTING_SETTINGS:
+            return sendSwitchCountingSettings();
 #endif
         case IDC_VERSION:
             sendStartResponse(IDC_VERSION);
@@ -192,6 +197,18 @@ ErrorCode Server::processBinaryRead(InstructionDataCode code) {
             return sendSwitchData();
         case IDC_CONTACT_WAIT_DATA:
             return sendContactWaitData();
+        case IDC_CURRENT_TIME:
+            sendStartResponse(IDC_CURRENT_TIME);
+            sendSerial(RelayController::getRemoteTimeSec());
+            return OK;
+        case IDC_GET_CYCLES_STATISTICS:
+            sendStartResponse(IDC_GET_CYCLES_STATISTICS);
+            sendSerial(minCycleDuration);
+            sendSerial(maxCycleDuration);
+            sendSerial((uint16_t)(millis() / cyclesCount));
+            sendSerial(cyclesCount);
+            return OK;
+
 
 #ifdef MEM_32KB
 #endif
@@ -219,20 +236,16 @@ ErrorCode Server::processBinarySet(InstructionDataCode code) {
             return saveRelayDisabledTemp();
         case IDC_RELAY_SWITCHED_ON:
             return saveRelaySwitchedOn();
+#endif
         case IDC_INTERRUPT_PIN:
             return saveInterruptPin();
-#endif
-        case IDC_CONTACT_READY_WAIT_DELAY:
-            return saveContactReadyWaitDelay();
-        case IDC_SWITCH_COUNT_INTERVAL_SEC:
-            return saveSwitchCountIntervalSec();
         case IDC_STATE_FIX_SETTINGS:
             return saveStateFixSettings();
         case IDC_REMOTE_TIMESTAMP:
             return saveRemoteTimestamp();
 #ifdef MEM_32KB
-            case IDC_MAX_SWITCH_COUNT:
-            return saveMaxSwitchCount();
+        case IDC_SWITCH_COUNTING_SETTINGS:
+            return saveSwitchCountingSettings();
         case IDC_CLEAR_SWITCH_COUNT:
             return clearSwitchCount();
 #endif
@@ -269,11 +282,14 @@ uint8_t Server::saveSettings() {
         );
         cmdBuffCurrPos += 3;
         if (!relaySettings[i].getSetPinSettings().isAllowedPin()){
-            return E_RELAY_NOT_ALLOWED_PIN_USED | relaySettings[i].getSetPinSettings().getPin();}
+            return E_RELAY_NOT_ALLOWED_PIN_USED | relaySettings[i].getSetPinSettings().getPin();
+        }
         if (!relaySettings[i].getMonitorPinSettings().isAllowedPin()){
-            return E_RELAY_NOT_ALLOWED_PIN_USED | relaySettings[i].getMonitorPinSettings().getPin();}
+            return E_RELAY_NOT_ALLOWED_PIN_USED | relaySettings[i].getMonitorPinSettings().getPin();
+        }
         if (!relaySettings[i].getControlPinSettings().isAllowedPin()){
-            return E_RELAY_NOT_ALLOWED_PIN_USED | relaySettings[i].getControlPinSettings().getPin();}
+            return E_RELAY_NOT_ALLOWED_PIN_USED | relaySettings[i].getControlPinSettings().getPin();
+        }
     }
     uint8_t savedCount = settings.saveRelaySettings(relaySettings, relayCount);
     return savedCount | E_UNDEFINED_CODE;
@@ -286,7 +302,7 @@ ErrorCode Server::sendState(bool addResultCode) {
     for (uint8_t i = 0; i < count; i += 2) {
         uint8_t tmpResult1 = readRelayStateBits(i);
         uint8_t tmpResult2 = i + 1 < count ? readRelayStateBits(i + 1) : 0;
-        result[i / 2] = readRelayStateBits(tmpResult2 << 4 | tmpResult1);
+        result[i / 2] = tmpResult2 << 4 | tmpResult1;
     }
     if (addResultCode) {
         sendStartResponse(IDC_STATE);
@@ -346,40 +362,13 @@ ErrorCode Server::saveInterruptPin() {
     return settings.saveControlInterruptPin(pin) ? OK : E_CONTROL_INTERRUPTED_PIN_NOT_ALLOWED_VALUE;
 }
 
-ErrorCode Server::sendContactReadyWaitDelay() {
-    sendStartResponse(IDC_CONTACT_READY_WAIT_DELAY);
-    sendSerial(RelayController::getContactReadyWaitDelay());
-    return OK;
-}
-
-ErrorCode Server::saveContactReadyWaitDelay() {
-    uint16_t value = 0;
-    ErrorCode res = readUint16FromCmdBuff(value);
-    if (res != OK) return res;
-    RelayController::setContactReadyWaitDelay(value);
-    return OK;
-}
-
-ErrorCode Server::sendSwitchCountIntervalSec() {
-    sendStartResponse(IDC_SWITCH_COUNT_INTERVAL_SEC);
-    sendSerial(RelayController::getSwitchLimitIntervalSec());
-    return OK;
-}
-
-ErrorCode Server::saveSwitchCountIntervalSec() {
-    uint16_t value = 0;
-    ErrorCode res = readUint16FromCmdBuff(value);
-    if (res != OK) return res;
-    RelayController::setSwitchLimitIntervalSec(value);
-    return OK;
-}
-
 ErrorCode Server::sendStateFixSettings() {
     sendStartResponse(IDC_STATE_FIX_SETTINGS);
     const StateFixSettings &stateFixSettings = settings.getStateFixSettings();
     sendSerial(stateFixSettings.getDelayMillis());
     sendSerial(stateFixSettings.getMaxCount());
     sendSerial(stateFixSettings.getMinWaitDelaySec());
+    sendSerial(stateFixSettings.getContactReadyWaitDelayMillis());
     return OK;
 }
 
@@ -390,10 +379,13 @@ ErrorCode Server::saveStateFixSettings() {
     uint8_t maxCount = 0;
     res = readUint8FromCmdBuff(maxCount);
     if (res != OK) return res;
-    uint16_t minWaitDelaySec = 0;
-    res = readUint16FromCmdBuff(minWaitDelaySec);
+    uint8_t minWaitDelaySec = 0;
+    res = readUint8FromCmdBuff(minWaitDelaySec);
     if (res != OK) return res;
-    settings.saveStateFixSettings(StateFixSettings(delayMillis, maxCount, minWaitDelaySec));
+    uint16_t contactReadyWaitDelayMillis = 0;
+    res = readUint16FromCmdBuff(contactReadyWaitDelayMillis);
+    if (res != OK) return res;
+    settings.saveStateFixSettings(StateFixSettings(delayMillis, maxCount, minWaitDelaySec, contactReadyWaitDelayMillis));
     return OK;
 }
 
@@ -412,23 +404,25 @@ ErrorCode Server::saveRemoteTimestamp() {
 }
 
 #ifdef MEM_32KB
-ErrorCode Server::sendMaxSwitchCount() {
-    uint8_t relayIdx = 0;
-    ErrorCode res = readRelayIndexFromCmdBuff(relayIdx);
-    if (res != OK) return res;
-    sendStartAnswer(IDC_MAX_SWITCH_COUNT);
-    sendSerial(RelayController::getMaxSwitchCount(relayIdx));
+ErrorCode Server::sendSwitchCountingSettings() {
+    sendStartResponse(IDC_SWITCH_COUNTING_SETTINGS);
+    sendSerial(settings.getSwitchCountingSettingsRef().getSwitchLimitIntervalSec());
+    sendSerial(settings.getSwitchCountingSettingsRef().getMaxSwitchCount());
     return OK;
 }
 
-ErrorCode Server::saveMaxSwitchCount() {
+ErrorCode Server::saveSwitchCountingSettings() {
     uint8_t relayIdx = 0;
     ErrorCode res = readRelayIndexFromCmdBuff(relayIdx);
     if (res != OK) return res;
-    uint8_t value = 0;
-    res = readUint8FromCmdBuff(value);
+    uint16_t switchLimitIntervalSec = 0;
+    res = readUint16FromCmdBuff(switchLimitIntervalSec);
     if (res != OK) return res;
-    RelayController::setMaxSwitchCount(relayIdx, value);
+    uint8_t switchMaxCount = 0;
+    res = readUint8FromCmdBuff(switchMaxCount);
+    if (res != OK) return res;
+    if (switchMaxCount > MAX_SWITCH_LIMIT_COUNT) return E_SWITCH_COUNT_MAX_VALUE_OVERFLOW;
+    settings.saveSwitchCountingSettings(SwitchCountingSettings(switchLimitIntervalSec, switchMaxCount));
     return OK;
 }
 
@@ -439,7 +433,6 @@ ErrorCode Server::clearSwitchCount() {
     RelayController::clearSwitchCount(relayIdx);
     return OK;
 }
-
 
 ErrorCode Server::sendAll() {
     sendStartResponse(IDC_ALL);
@@ -470,7 +463,9 @@ ErrorCode Server::saveAll() {
 
 ErrorCode Server::sendFixData() {
     sendStartResponse(IDC_FIX_DATA);
-    for (uint8_t i = 0; i < settings.getRelaysCount(); i++) {
+    uint8_t count = settings.getRelaysCount();
+    sendSerial(count);
+    for (uint8_t i = 0; i < count; i++) {
         sendSerial(RelayController::getFixTryCount(i));
         sendSerial(RelayController::getFixLastTryTime(i));
     }
@@ -481,6 +476,7 @@ ErrorCode Server::sendSwitchData() {
     sendStartResponse(IDC_SWITCH_DATA);
     uint32_t *switchData;
     uint8_t dataCount = RelayController::getSwitchData(&switchData);
+    sendSerial(dataCount);
     for (uint8_t i = 0; i < dataCount; i++) {
         sendSerial(switchData[i]);
     }
@@ -503,10 +499,10 @@ ErrorCode Server::send(uint8_t(*getter)(Server*, uint8_t), InstructionDataCode d
     uint8_t value = getter(this, relayIndex);
     sendStartResponse(dataCode);
     if (value <= 0x0f) {
-        sendSerial((uint8_t)(((value & 0x0F) << 4) | relayIndex));
+        sendSerial((uint8_t)((relayIndex & 0x0F) | (value << 4)));
     } else {
-        sendSerial(value);
         sendSerial(relayIndex);
+        sendSerial(value);
     }
     return OK;
 }
@@ -524,9 +520,7 @@ ErrorCode Server::save(void(*setter)(Server*, uint8_t, uint8_t)) {
 
 ErrorCode Server::sendRelayState() {
     return send([]  (Server *communicator, uint8_t relayIndex) {
-        uint8_t value = Server::readRelayStateBits(relayIndex);
-        value = (value << 4) | relayIndex;
-        return value;
+        return Server::readRelayStateBits(relayIndex);
     }, IDC_RELAY_STATE);
 }
 
@@ -541,7 +535,7 @@ ErrorCode Server::saveRelayState() {
 
 ErrorCode Server::sendRelayDisabledTemp() {
     return send([]  (Server *communicator, uint8_t relayIndex) {
-        uint8_t value = communicator-> RelayController::isControlTemporaryDisabled(relayIndex);
+        uint8_t value = RelayController::isControlTemporaryDisabled(relayIndex);
         value = (value << 4) | relayIndex;
         return value;
     }, IDC_RELAY_DISABLED_TEMP);
@@ -549,13 +543,13 @@ ErrorCode Server::sendRelayDisabledTemp() {
 
 ErrorCode Server::saveRelayDisabledTemp() {
     return save([] (Server *communicator, uint8_t relayIndex, uint8_t cmdData) {
-        communicator->RelayController::setControlTemporaryDisabled(relayIndex, CHECK_BIT(cmdData, 0));
+        RelayController::setControlTemporaryDisabled(relayIndex, CHECK_BIT(cmdData, 0));
     });
 }
 
 ErrorCode Server::sendRelaySwitchedOn() {
     return send([]  (Server *communicator, uint8_t relayIndex) {
-        uint8_t value = communicator-> RelayController::getRelayLastState(relayIndex);
+        uint8_t value = RelayController::getRelayLastState(relayIndex);
         value = (value << 4) | relayIndex;
         return value;
     }, IDC_RELAY_SWITCHED_ON);
@@ -563,13 +557,13 @@ ErrorCode Server::sendRelaySwitchedOn() {
 
 ErrorCode Server::saveRelaySwitchedOn() {
     return save([] (Server *communicator, uint8_t relayIndex, uint8_t cmdData) {
-        communicator->RelayController::setRelayState(relayIndex, CHECK_BIT(cmdData, 0));
+        RelayController::setRelayState(relayIndex, CHECK_BIT(cmdData, 0));
     });
 }
 
 ErrorCode Server::sendRelayMonitorOn() {
     return send([]  (Server *communicator, uint8_t relayIndex) {
-        uint8_t value = communicator-> RelayController::checkRelayMonitoringState(relayIndex);
+        uint8_t value = RelayController::checkRelayMonitoringState(relayIndex);
         value = (value << 4) | relayIndex;
         return value;
     }, IDC_RELAY_MONITOR_ON);
@@ -577,7 +571,7 @@ ErrorCode Server::sendRelayMonitorOn() {
 
 ErrorCode Server::sendRelayControlOn() {
     return send([]  (Server *communicator, uint8_t relayIndex) {
-        uint8_t value = communicator-> RelayController::checkControlPinState(relayIndex);
+        uint8_t value = RelayController::checkControlPinState(relayIndex);
         value = (value << 4) | relayIndex;
         return value;
     }, IDC_RELAY_CONTROL_ON);
@@ -592,7 +586,7 @@ ErrorCode Server::readUint8FromCmdBuff(uint8_t &result) {
 }
 
 ErrorCode Server::readUint16FromCmdBuff(uint16_t &result) {
-    if (cmdBuffSize < cmdBuffCurrPos + sizeof(uint32_t)) return E_REQUEST_DATA_NO_VALUE;
+    if (cmdBuffSize < cmdBuffCurrPos + sizeof(uint16_t)) return E_REQUEST_DATA_NO_VALUE;
     result |= ((uint_fast16_t)cmdBuff[cmdBuffCurrPos++]) << 8;
     result |= cmdBuff[cmdBuffCurrPos++];
     return OK;

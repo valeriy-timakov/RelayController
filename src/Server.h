@@ -31,6 +31,10 @@ private:
     bool commandPocessed = false;
     uint32_t lastPacketTime = 0;
     uint8_t lastPacketSize = 0;
+    uint16_t minCycleDuration = 0xffff;
+    uint16_t maxCycleDuration = 0;
+    uint64_t cyclesCount = 0;
+    uint64_t lastCycleTime = 0;
 
     bool readBinaryCommand();
     void processBinaryInstruction();
@@ -65,14 +69,10 @@ private:
     ErrorCode readRelayIndexFromCmdBuff(uint8_t &result);
     ErrorCode readRelayCountFromCmdBuff(uint8_t &count);
     static uint8_t readRelayStateBits(uint8_t relayIndex);
-    static ErrorCode sendContactReadyWaitDelay();
-    ErrorCode saveContactReadyWaitDelay();
     ErrorCode readUint16FromCmdBuff(uint16_t &result);
-    static ErrorCode sendSwitchCountIntervalSec();
-    ErrorCode saveSwitchCountIntervalSec();
 #ifdef MEM_32KB
-    ErrorCode sendMaxSwitchCount();
-    ErrorCode saveMaxSwitchCount();
+    ErrorCode sendSwitchCountingSettings();
+    ErrorCode saveSwitchCountingSettings();
     ErrorCode clearSwitchCount();
 #endif
     ErrorCode sendStateFixSettings();
