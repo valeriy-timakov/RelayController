@@ -103,25 +103,6 @@ public:
 #define RELAY_SWITCH_BY_PUSH_BIT (RELAY_INVERSED_BIT + 1)
 #define RELAY_SWITCH_BY_PUSH_BIT_MASK (1 << RELAY_SWITCH_BY_PUSH_BIT)
 
-inline uint8_t pinSettingsGetPin(uint8_t pinSettings) {
-    return (pinSettings & RELAY_PIN_BITS_MASK) >> RELAY_PIN_BITS_START;
-}
-inline bool pinSettingsIsEnabled(uint8_t pinSettings) {
-    return (pinSettings & RELAY_PIN_BITS_MASK) != RELAY_PIN_BITS_MASK;
-}
-inline bool pinSettingsIsInversed(uint8_t pinSettings) {
-    return (pinSettings & RELAY_INVERSED_BIT_MASK) != 0;
-}
-inline void pinSettingsSetPin(uint8_t &pinSettings, uint8_t pin) {
-    pinSettings = (pinSettings & ~RELAY_PIN_BITS_MASK) | ((pin << RELAY_PIN_BITS_START) & RELAY_PIN_BITS_MASK);
-}
-inline void pinSettingsSetDisabled(uint8_t &pinSettings) {
-    pinSettingsSetPin(pinSettings, RELAY_DISABLED_PIN);
-}
-inline void pinSettingsSetBit(uint8_t &pinSettings, bool set, uint8_t mask) {
-    pinSettings = (pinSettings & ~mask) | (set ? mask : 0);
-}
-
 const uint8_t FORBIDEN_PINS[] = {0, 1, 11, 12, 13};
 
 inline bool isPinAllowed(uint8_t pin) {
@@ -151,17 +132,8 @@ public:
     [[nodiscard]] inline bool isInversed() const {
         return isBitSet(RELAY_INVERSED_BIT_MASK);
     }
-    inline void pinSettingsSetPin(uint8_t pin) {
-        pinSettings = (pinSettings & ~RELAY_PIN_BITS_MASK) | ((pin << RELAY_PIN_BITS_START) & RELAY_PIN_BITS_MASK);
-    }
-    inline void pinSettingsSetDisabled() {
-        pinSettingsSetPin(RELAY_DISABLED_PIN);
-    }
     inline void pinSettingsSetBit(bool set, uint8_t mask) {
         pinSettings = (pinSettings & ~mask) | (set ? mask : 0);
-    }
-    inline void pinSettingsSetInversed(bool inversed) {
-        pinSettingsSetBit(inversed, RELAY_INVERSED_BIT_MASK);
     }
     [[nodiscard]] inline uint8_t getRaw() const {
         return pinSettings;
@@ -183,26 +155,14 @@ public:
     [[nodiscard]] inline const PinSettings& getSetPinSettings() const {
         return setPinSettings;
     }
-    inline PinSettings& getSetPinSettingsMut() {
-        return setPinSettings;
-    }
     [[nodiscard]] inline const PinSettings& getMonitorPinSettings() const {
-        return monitorPinSettings;
-    }
-    inline PinSettings& getMonitorPinSettingsMut() {
         return monitorPinSettings;
     }
     [[nodiscard]] inline const PinSettings& getControlPinSettings() const {
         return controlPinSettings;
     }
-    inline PinSettings& getControlPinSettingsMut() {
-        return controlPinSettings;
-    }
     [[nodiscard]] inline bool isControlPinSwitchByPush() const {
         return controlPinSettings.isBitSet(RELAY_SWITCH_BY_PUSH_BIT_MASK);
-    }
-    inline void setControlPinSwitchByPush(bool switchByPush) {
-        controlPinSettings.pinSettingsSetBit(switchByPush, RELAY_SWITCH_BY_PUSH_BIT_MASK);
     }
 };
 
