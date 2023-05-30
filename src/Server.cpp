@@ -21,7 +21,13 @@ void Server::setup() {
 }
 
 void Server::idle() {
-#ifdef MEM_32KB
+    updateStatistics();
+    while (readBinaryCommand()) {
+        processBinaryInstruction();
+    }
+}
+
+void Server::updateStatistics() {
     uint64_t currTime = millis();
     uint16_t cycleDuration = currTime - lastCycleTime;
     lastCycleTime = currTime;
@@ -31,10 +37,6 @@ void Server::idle() {
         minCycleDuration = cycleDuration;
     }
     cyclesCount++;
-#endif
-    while (readBinaryCommand()) {
-        processBinaryInstruction();
-    }
 }
 
 void clearSerial() {
@@ -165,6 +167,10 @@ ErrorCode Server::processBinaryRead(InstructionDataCode code) {
 #endif
         case IDC_RELAY_STATE:
             return sendRelayState();
+        case IDC_STATE_FIX_SETTINGS:
+            return sendStateFixSettings();
+        case IDC_REMOTE_TIMESTAMP:
+            return sendRemoteTimestamp();
 #ifdef MEM_32KB
         case IDC_RELAY_DISABLED_TEMP:
             return sendRelayDisabledTemp();
@@ -174,14 +180,8 @@ ErrorCode Server::processBinaryRead(InstructionDataCode code) {
             return sendRelayMonitorOn();
         case IDC_RELAY_CONTROL_ON:
             return sendRelayControlOn();
-#endif
-        case IDC_INTERRUPT_PIN:
+            case IDC_INTERRUPT_PIN:
             return sendInterruptPin();
-        case IDC_STATE_FIX_SETTINGS:
-            return sendStateFixSettings();
-        case IDC_REMOTE_TIMESTAMP:
-            return sendRemoteTimestamp();
-#ifdef MEM_32KB
         case IDC_SWITCH_COUNTING_SETTINGS:
             return sendSwitchCountingSettings();
 #endif
@@ -193,6 +193,10 @@ ErrorCode Server::processBinaryRead(InstructionDataCode code) {
             sendSerial((uint8_t)1);
 #endif
             return OK;
+        case IDC_CURRENT_TIME:
+            sendStartResponse(IDC_CURRENT_TIME);
+            sendSerial(RelayController::getRemoteTimeSec());
+            return OK;
 #ifdef MEM_32KB
         case IDC_FIX_DATA:
             return sendFixData();
@@ -201,19 +205,13 @@ ErrorCode Server::processBinaryRead(InstructionDataCode code) {
         case IDC_CONTACT_WAIT_DATA:
             return sendContactWaitData();
 #endif
-        case IDC_CURRENT_TIME:
-            sendStartResponse(IDC_CURRENT_TIME);
-            sendSerial(RelayController::getRemoteTimeSec());
-            return OK;
-#ifdef MEM_32KB
-            case IDC_GET_CYCLES_STATISTICS:
+        case IDC_GET_CYCLES_STATISTICS:
             sendStartResponse(IDC_GET_CYCLES_STATISTICS);
             sendSerial(minCycleDuration);
             sendSerial(maxCycleDuration);
             sendSerial((uint16_t)(millis() / cyclesCount));
             sendSerial(cyclesCount);
             return OK;
-#endif
         default:
             return E_UNDEFINED_OPERATION;
     }
@@ -227,25 +225,21 @@ ErrorCode Server::processBinarySet(InstructionDataCode code) {
             return saveState();
         case IDC_ID:
             return saveId();
-#ifdef MEM_32KB
-        case IDC_ALL:
-            return saveAll();
-#endif
-        case IDC_RELAY_STATE:
-            return saveRelayState();
-#ifdef MEM_32KB
-        case IDC_RELAY_DISABLED_TEMP:
-            return saveRelayDisabledTemp();
-        case IDC_RELAY_SWITCHED_ON:
-            return saveRelaySwitchedOn();
-#endif
-        case IDC_INTERRUPT_PIN:
-            return saveInterruptPin();
         case IDC_STATE_FIX_SETTINGS:
             return saveStateFixSettings();
         case IDC_REMOTE_TIMESTAMP:
             return saveRemoteTimestamp();
+        case IDC_RELAY_STATE:
+            return saveRelayState();
 #ifdef MEM_32KB
+        case IDC_ALL:
+            return saveAll();
+        case IDC_RELAY_DISABLED_TEMP:
+            return saveRelayDisabledTemp();
+        case IDC_RELAY_SWITCHED_ON:
+            return saveRelaySwitchedOn();
+        case IDC_INTERRUPT_PIN:
+            return saveInterruptPin();
         case IDC_SWITCH_COUNTING_SETTINGS:
             return saveSwitchCountingSettings();
         case IDC_CLEAR_SWITCH_COUNT:
@@ -349,21 +343,6 @@ ErrorCode Server::saveId() {
     return OK;
 }
 
-ErrorCode Server::sendInterruptPin(bool addResultCode) {
-    if (addResultCode) {
-        sendStartResponse(IDC_INTERRUPT_PIN);
-    }
-    sendSerial(settings.getControlInterruptPin());
-    return OK;
-}
-
-ErrorCode Server::saveInterruptPin() {
-    uint8_t pin = 0;
-    ErrorCode res = readUint8FromCmdBuff(pin);
-    if (res != OK) return res;
-    return settings.saveControlInterruptPin(pin) ? OK : E_CONTROL_INTERRUPTED_PIN_NOT_ALLOWED_VALUE;
-}
-
 ErrorCode Server::sendStateFixSettings() {
     sendStartResponse(IDC_STATE_FIX_SETTINGS);
     const StateFixSettings &stateFixSettings = settings.getStateFixSettings();
@@ -406,6 +385,22 @@ ErrorCode Server::saveRemoteTimestamp() {
 }
 
 #ifdef MEM_32KB
+
+ErrorCode Server::sendInterruptPin(bool addResultCode) {
+    if (addResultCode) {
+        sendStartResponse(IDC_INTERRUPT_PIN);
+    }
+    sendSerial(settings.getControlInterruptPin());
+    return OK;
+}
+
+ErrorCode Server::saveInterruptPin() {
+    uint8_t pin = 0;
+    ErrorCode res = readUint8FromCmdBuff(pin);
+    if (res != OK) return res;
+    return settings.saveControlInterruptPin(pin) ? OK : E_CONTROL_INTERRUPTED_PIN_NOT_ALLOWED_VALUE;
+}
+
 ErrorCode Server::sendSwitchCountingSettings() {
     sendStartResponse(IDC_SWITCH_COUNTING_SETTINGS);
     sendSerial(settings.getSwitchCountingSettingsRef().getSwitchLimitIntervalSec());

@@ -13,17 +13,17 @@ void Settings::load() {
         EEPROM.update(RELAYS_COUNT_LOCATION, relaysCount);
     }
     EEPROM.get(CONTROLLER_ID_LOCATION, controllerId);
-    EEPROM.get(CONTROL_INTERRUPT_PIN_LOCATION, controlInterruptPin);
     EEPROM.get(STATE_FIX_SETTINGS_LOCATION, stateFixSettings);
     if (
-        stateFixSettings.getContactReadyWaitDelayMillis() == 0xffff &&
-        stateFixSettings.getMinWaitDelaySec() == 0xff &&
-        stateFixSettings.getMaxCount() == 0xff &&
-        stateFixSettings.getDelayMillis() == 0xffff
-    ) {
+            stateFixSettings.getContactReadyWaitDelayMillis() == 0xffff &&
+            stateFixSettings.getMinWaitDelaySec() == 0xff &&
+            stateFixSettings.getMaxCount() == 0xff &&
+            stateFixSettings.getDelayMillis() == 0xffff
+            ) {
         saveStateFixSettings(StateFixSettings());
     }
 #ifdef MEM_32KB
+    EEPROM.get(CONTROL_INTERRUPT_PIN_LOCATION, controlInterruptPin);
     EEPROM.get(STATE_SWITCH_COUNT_SETTINGS_LOCATION, switchCountingSettings);
 #endif
     for (uint8_t i = 0; i < relaysCount; i++) {
@@ -53,6 +53,14 @@ void Settings::saveControllerId(uint32_t value) {
     EEPROM.put(CONTROLLER_ID_LOCATION, value);
 }
 
+void Settings::saveStateFixSettings(const StateFixSettings &value) {
+    stateFixSettings = value;
+    EEPROM.put(STATE_FIX_SETTINGS_LOCATION, stateFixSettings);
+}
+
+
+#ifdef MEM_32KB
+
 const uint8_t ALLOWED_INTERRUPT_PINS[] = {2, 3};
 
 bool Settings::saveControlInterruptPin(uint8_t value) {
@@ -69,16 +77,11 @@ bool Settings::saveControlInterruptPin(uint8_t value) {
     return true;
 }
 
-void Settings::saveStateFixSettings(const StateFixSettings &value) {
-    stateFixSettings = value;
-    EEPROM.put(STATE_FIX_SETTINGS_LOCATION, stateFixSettings);
-}
-
-#ifdef MEM_32KB
 void Settings::saveSwitchCountingSettings(const SwitchCountingSettings &value) {
     switchCountingSettings = value;
     EEPROM.put(STATE_SWITCH_COUNT_SETTINGS_LOCATION, switchCountingSettings);
 }
+
 #endif
 
 SettingsPtr Settings::getRelaysSettingsPtr() const {

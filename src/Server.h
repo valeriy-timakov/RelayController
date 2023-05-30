@@ -48,9 +48,9 @@ private:
     ErrorCode saveState();
     ErrorCode sendId(bool addResultCode = true);
     ErrorCode saveId();
+#ifdef MEM_32KB
     ErrorCode sendInterruptPin(bool addResultCode = true);
     ErrorCode saveInterruptPin();
-#ifdef MEM_32KB
     ErrorCode sendAll();
     ErrorCode saveAll();
 #endif

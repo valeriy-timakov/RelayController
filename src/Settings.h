@@ -84,10 +84,10 @@ public:
 #define DEFAULT_INTERRUPT_PIN 2
 #define RELAYS_COUNT_LOCATION 0
 #define CONTROLLER_ID_LOCATION (RELAYS_COUNT_LOCATION + sizeof (uint8_t))
-#define CONTROL_INTERRUPT_PIN_LOCATION (CONTROLLER_ID_LOCATION + sizeof (uint32_t))
-#define STATE_FIX_SETTINGS_LOCATION (CONTROL_INTERRUPT_PIN_LOCATION + sizeof (uint8_t))
+#define STATE_FIX_SETTINGS_LOCATION (CONTROLLER_ID_LOCATION + sizeof (uint32_t))
 #ifdef MEM_32KB
-    #define STATE_SWITCH_COUNT_SETTINGS_LOCATION (STATE_FIX_SETTINGS_LOCATION + sizeof (StateFixSettings))
+#define CONTROL_INTERRUPT_PIN_LOCATION (STATE_FIX_SETTINGS_LOCATION + sizeof (StateFixSettings))
+    #define STATE_SWITCH_COUNT_SETTINGS_LOCATION (CONTROL_INTERRUPT_PIN_LOCATION + sizeof (uint8_t))
     #define RELAYS_SETTINGS_START_LOCATION (STATE_SWITCH_COUNT_SETTINGS_LOCATION + sizeof (SwitchCountingSettings))
 #else
     #define RELAYS_SETTINGS_START_LOCATION (STATE_FIX_SETTINGS_LOCATION + sizeof (StateFixSettings))
@@ -176,18 +176,18 @@ public:
     [[nodiscard]] inline uint8_t getRelaysCount() const { return relaysCount; };
     [[nodiscard]] inline const RelaySettings& getRelaySettingsRef(uint8_t relayIdx) const { return relaySettings[relayIdx]; };
     [[nodiscard]] inline uint32_t getControllerId() const { return controllerId; }
-    [[nodiscard]] inline uint8_t getControlInterruptPin() const { return controlInterruptPin; }
     [[nodiscard]] SettingsPtr getRelaysSettingsPtr() const;
     [[nodiscard]] inline const StateFixSettings &getStateFixSettings() const { return stateFixSettings; }
 #ifdef MEM_32KB
+    [[nodiscard]] inline uint8_t getControlInterruptPin() const { return controlInterruptPin; }
     [[nodiscard]] inline const SwitchCountingSettings& getSwitchCountingSettingsRef() const { return switchCountingSettings; }
 #endif
     [[nodiscard]] bool isReady() const  { return ready; }
-    bool saveControlInterruptPin(uint8_t value);
     uint8_t saveRelaySettings(RelaySettings settings[], uint8_t count);
     void saveControllerId(uint32_t value);
     void saveStateFixSettings(const StateFixSettings &stateFixSettings);
 #ifdef MEM_32KB
+    bool saveControlInterruptPin(uint8_t value);
     void saveSwitchCountingSettings(const SwitchCountingSettings &stateFixSettings);
 #endif
     inline void setOnSettingsChanged(void (*value)()) { onSettingsChanged = value; }
@@ -196,10 +196,10 @@ private:
     bool ready = false;
     uint8_t relaysCount;
     uint32_t controllerId;
-    uint8_t controlInterruptPin = DEFAULT_INTERRUPT_PIN;
     StateFixSettings stateFixSettings;
     RelaySettings relaySettings[MAX_RELAYS_COUNT];
 #ifdef MEM_32KB
+    uint8_t controlInterruptPin = DEFAULT_INTERRUPT_PIN;
     SwitchCountingSettings switchCountingSettings;
 #endif
     void (*onSettingsChanged)() = nullptr;
@@ -214,9 +214,9 @@ public:
     SettingsPtr(SettingsPtr &src) : settings(src.settings) {}
     [[nodiscard]] inline uint8_t getRelaysCount() const { return settings->getRelaysCount(); }
     [[nodiscard]] inline const RelaySettings& getRelaySettingsRef(uint8_t relayIdx) const { return settings->getRelaySettingsRef(relayIdx); }
-    [[nodiscard]] inline uint8_t getControlInterruptPin() const { return settings->getControlInterruptPin(); }
     [[nodiscard]] inline const StateFixSettings& getStateFixSettings() const { return settings->getStateFixSettings(); }
 #ifdef MEM_32KB
+    [[nodiscard]] inline uint8_t getControlInterruptPin() const { return settings->getControlInterruptPin(); }
     [[nodiscard]] inline const SwitchCountingSettings& getSwitchCountingSettingsRef() const { return settings->getSwitchCountingSettingsRef(); }
 #endif
 };

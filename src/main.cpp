@@ -4,7 +4,7 @@
 #include "Server.h"
 
 Settings data;
-Server communicator(data);
+Server server(data);
 
 
 void setup() {
@@ -12,10 +12,14 @@ void setup() {
     delay(100);
     data.load();
     RelayController::setup(data);
-    communicator.setup();
+#ifdef MEM_32KB
+    server.setup();
+#else
+    Server::setup();
+#endif
 }
 
 void loop() {
     RelayController::idle();
-    communicator.idle();
+    server.idle();
 }

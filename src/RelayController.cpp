@@ -178,9 +178,9 @@ struct SwitchLimiter {
 SwitchLimiter switchLimiters[MAX_RELAYS_COUNT];
 uint32_t stateSwitchDatas[SWITCHES_DATA_BUFFER_SIZE];
 uint8_t stateSwitchCount = 0;
+bool lastInterruptPinHigh = false;
 #endif
 ContactWaitData lastChangeWaitDatas[MAX_RELAYS_COUNT];
-bool lastInterruptPinHigh = false;
 uint16_t lastControlState = 0;
 uint16_t lastRelayState = 0;
 uint16_t temporaryDisabledControls = 0;
@@ -319,13 +319,22 @@ void checkAndProcessChanges() {
     }
 }
 
+#ifdef MEM_32KB
 void onControlPinChange() {
     bool newInterruptPinHigh = digitalRead(settings_.getControlInterruptPin()) == HIGH;
+    sendSerial((uint8_t)(0x7f & (newInterruptPinHigh ? 0x80 : 0x00)));
+    bool changed = false;
+    cli();
     if (newInterruptPinHigh != lastInterruptPinHigh) {
-        checkAndProcessChanges();
         lastInterruptPinHigh = newInterruptPinHigh;
+        changed = true;
+    }
+    sei();
+    if (changed) {
+        checkAndProcessChanges();
     }
 }
+#endif
 
 void switchRelayState(const RelaySettings &settings, uint8_t i) {
     bool switchedOn = !getLastRelayState(i);
@@ -355,7 +364,9 @@ void RelayController::settingsChanged() {
             }
         }
     }
+#ifdef MEM_32KB
     attachInterrupt(digitalPinToInterrupt(settings_.getControlInterruptPin()), onControlPinChange, CHANGE);
+#endif
 }
 
 
