@@ -31,13 +31,12 @@ private:
     bool commandPocessed = false;
     uint32_t lastPacketTime = 0;
     uint8_t lastPacketSize = 0;
-#ifdef MEM_32KB
-    uint16_t minCycleDuration = 0xffff;
-    uint16_t maxCycleDuration = 0;
-    uint64_t cyclesCount = 0;
-    uint64_t lastCycleTime = 0;
-#endif
+    static uint16_t minCycleDuration;
+    static uint16_t maxCycleDuration;
+    static uint64_t cyclesCount;
+    static uint64_t lastCycleTime;
 
+    static void updateStatistics();
     bool readBinaryCommand();
     void processBinaryInstruction();
     ErrorCode processBinaryRead(InstructionDataCode dataCode);

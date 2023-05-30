@@ -13,6 +13,11 @@
 #define SET_RELAY_STATE_DATA_COUNT_IN_BYTE (8 / SET_RELAY_STATE_DATA_SIZE)
 
 
+uint16_t Server::minCycleDuration = 0xffff;
+uint16_t Server::maxCycleDuration = 0;
+uint64_t Server::cyclesCount = 0;
+uint64_t Server::lastCycleTime = 0;
+
 void Server::setup() {
     sendSerial((uint64_t)0L);
     if (!settings.isReady()) {
