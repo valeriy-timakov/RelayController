@@ -55,7 +55,7 @@ private:
 public:
     ContactWaitData() : data(0)
 #ifdef MEM_32KB
-            , startWaitSec(0)
+    , startWaitSec(0)
 #endif
     {}
     [[nodiscard]] inline bool isWaitStarted() const {
@@ -73,8 +73,8 @@ public:
             return false;
         }
     }
-
 #ifdef MEM_32KB
+
     [[nodiscard]] inline uint32_t getStartWaitSec() const {
         return startWaitSec;
     }
@@ -186,7 +186,7 @@ uint16_t lastRelayState = 0;
 uint16_t temporaryDisabledControls = 0;
 uint32_t startLocalTimeSec = 0;
 uint32_t remoteTimeStamp = 0;
-int32_t stateFixTimes[MAX_RELAYS_COUNT];
+uint32_t stateFixTimes[MAX_RELAYS_COUNT];
 uint8_t stateFixCount[MAX_RELAYS_COUNT];
 uint32_t lastTimeStampRequsetTime = 0;
 uint16_t lastMonitoringState = 0;
@@ -223,7 +223,7 @@ bool checkPinState(const PinSettings &pinSettings) {
 }
 
 uint32_t getLocalTimeSec() {
-    return millis() / MILLIS_PER_SECOND - startLocalTimeSec;
+    return millis() / MILLIS_PER_SECOND;
 }
 
 inline void writePinStateForse(const PinSettings &pinSettings, bool switchedOn) {
@@ -284,6 +284,9 @@ void checkAndFixRelayStates() {
             writePinStateForse(setPinSettings, switchedOn);
             stateFixTimes[relayIdx] = getLocalTimeSec();
             stateFixCount[relayIdx]++;
+            sendSerial(IDC_STATE_FIX_TRY);
+            sendSerial(relayIdx);
+            sendSerial(stateFixTimes[relayIdx]);
         }
     }
 }
@@ -369,9 +372,13 @@ void RelayController::settingsChanged() {
 #endif
 }
 
-
+const uint8_t ALL_PINS[] = { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12,
+                             A0, A1, A2, A3, A4, A5 };
 
 void RelayController::setup(Settings &settings) {
+    for (uint8_t i : ALL_PINS) {
+        pinMode(i, INPUT_PULLUP);
+    }
     settings_ = settings.getRelaysSettingsPtr();
     if (!settings.isReady()) {
         settings.load();
@@ -448,21 +455,16 @@ uint32_t RelayController::getRemoteTimeStamp() {
 
 void RelayController::setRemoteTimeStamp(uint32_t value) {
     remoteTimeStamp = value;
-    uint32_t newStartLocalTimeSec = millis() / MILLIS_PER_SECOND;
-    uint32_t diff = newStartLocalTimeSec - startLocalTimeSec;
-    for (uint8_t i = 0; i < settings_.getRelaysCount(); i++) {
-        stateFixTimes[i] -= diff;
-    }
-    startLocalTimeSec = newStartLocalTimeSec;
-
-
+    startLocalTimeSec = getLocalTimeSec();
 }
 
 uint32_t RelayController::getRemoteTimeSec() {
-    return getLocalTimeSec() + remoteTimeStamp;
+    return totRemoteTimeSec(getLocalTimeSec());
 }
 
-#ifdef MEM_32KB
+uint32_t RelayController::totRemoteTimeSec(uint32_t localTimeSec) {
+    return localTimeSec - startLocalTimeSec + remoteTimeStamp;
+}
 
 uint8_t RelayController::getFixTryCount(uint8_t relayIdx) {
     if (relayIdx >= settings_.getRelaysCount()) {
@@ -471,11 +473,17 @@ uint8_t RelayController::getFixTryCount(uint8_t relayIdx) {
     return stateFixCount[relayIdx];
 }
 
-int32_t RelayController::getFixLastTryTime(uint8_t relayIdx) {
+uint32_t RelayController::getFixLastTryTime(uint8_t relayIdx) {
     if (relayIdx >= settings_.getRelaysCount()) {
         return 0;
     }
-    return stateFixTimes[relayIdx];
+    return totRemoteTimeSec(stateFixTimes[relayIdx]);
+}
+
+#ifdef MEM_32KB
+
+uint32_t RelayController::getContactStartWait(uint8_t relayIdx) {
+    return  lastChangeWaitDatas[relayIdx].getStartWaitSec();
 }
 
 uint8_t RelayController::getSwitchData(uint32_t **data) {
@@ -483,10 +491,6 @@ uint8_t RelayController::getSwitchData(uint32_t **data) {
     uint8_t stateSwitchCount_ = stateSwitchCount;
     stateSwitchCount = 0;
     return stateSwitchCount_;
-}
-
-uint32_t RelayController::getContactStartWait(uint8_t relayIdx) {
-    return lastChangeWaitDatas[relayIdx].getStartWaitSec();
 }
 
 void RelayController::clearSwitchCount(uint8_t relayIdx) {

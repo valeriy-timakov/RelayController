@@ -64,27 +64,25 @@ private:
     ErrorCode sendRelayControlOn();
     ErrorCode send(uint8_t(*getter)(Server*, uint8_t), InstructionDataCode dataCode = IDC_UNKNOWN);
     ErrorCode save(void(*setter)(Server*, uint8_t, uint8_t));
-#endif
-    ErrorCode readUint8FromCmdBuff(uint8_t &result);
-    ErrorCode readUint32FromCommandBuffer(uint32_t &result);
-#ifdef MEM_32KB
-    ErrorCode readRelayIndexFromCmdBuff(uint8_t &result);
-#endif
-    ErrorCode readRelayCountFromCmdBuff(uint8_t &count);
-    static uint8_t readRelayStateBits(uint8_t relayIndex);
-    ErrorCode readUint16FromCmdBuff(uint16_t &result);
-#ifdef MEM_32KB
     ErrorCode sendSwitchCountingSettings();
     ErrorCode saveSwitchCountingSettings();
     ErrorCode clearSwitchCount();
-    static ErrorCode sendSwitchData();
-    ErrorCode sendFixData();
-    ErrorCode sendContactWaitData();
 #endif
     ErrorCode sendStateFixSettings();
     ErrorCode saveStateFixSettings();
     static ErrorCode sendRemoteTimestamp();
     ErrorCode saveRemoteTimestamp();
+    ErrorCode sendFixData();
+#ifdef MEM_32KB
+    ErrorCode sendContactWaitData();
+    static ErrorCode sendSwitchData();
+    ErrorCode readRelayIndexFromCmdBuff(uint8_t &result);
+#endif
+    ErrorCode readUint8FromCmdBuff(uint8_t &result);
+    ErrorCode readUint32FromCommandBuffer(uint32_t &result);
+    ErrorCode readRelayCountFromCmdBuff(uint8_t &count);
+    static uint8_t readRelayStateBits(uint8_t relayIndex);
+    ErrorCode readUint16FromCmdBuff(uint16_t &result);
 };
 
 

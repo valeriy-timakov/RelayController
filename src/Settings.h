@@ -132,9 +132,6 @@ public:
     [[nodiscard]] inline bool isInversed() const {
         return isBitSet(RELAY_INVERSED_BIT_MASK);
     }
-    inline void pinSettingsSetBit(bool set, uint8_t mask) {
-        pinSettings = (pinSettings & ~mask) | (set ? mask : 0);
-    }
     [[nodiscard]] inline uint8_t getRaw() const {
         return pinSettings;
     }

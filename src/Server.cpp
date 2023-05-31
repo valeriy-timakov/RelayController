@@ -203,13 +203,13 @@ ErrorCode Server::processBinaryRead(InstructionDataCode code) {
             sendSerial(RelayController::getRemoteTimeSec());
             return OK;
 #ifdef MEM_32KB
-        case IDC_FIX_DATA:
-            return sendFixData();
         case IDC_SWITCH_DATA:
             return sendSwitchData();
         case IDC_CONTACT_WAIT_DATA:
             return sendContactWaitData();
 #endif
+        case IDC_FIX_DATA:
+            return sendFixData();
         case IDC_GET_CYCLES_STATISTICS:
             sendStartResponse(IDC_GET_CYCLES_STATISTICS);
             sendSerial(minCycleDuration);
@@ -461,35 +461,6 @@ ErrorCode Server::saveAll() {
 
     return OK;
 }
-ErrorCode Server::sendFixData() {
-    sendStartResponse(IDC_FIX_DATA);
-    uint8_t count = settings.getRelaysCount();
-    sendSerial(count);
-    for (uint8_t i = 0; i < count; i++) {
-        sendSerial(RelayController::getFixTryCount(i));
-        sendSerial(RelayController::getFixLastTryTime(i));
-    }
-    return OK;
-}
-
-ErrorCode Server::sendSwitchData() {
-    sendStartResponse(IDC_SWITCH_DATA);
-    uint32_t *switchData;
-    uint8_t dataCount = RelayController::getSwitchData(&switchData);
-    sendSerial(dataCount);
-    for (uint8_t i = 0; i < dataCount; i++) {
-        sendSerial(switchData[i]);
-    }
-    return OK;
-}
-
-ErrorCode Server::sendContactWaitData() {
-    sendStartResponse(IDC_CONTACT_WAIT_DATA);
-    for (uint8_t i = 0; i < settings.getRelaysCount(); i++) {
-        sendSerial(RelayController::getContactStartWait(i));
-    }
-    return OK;
-}
 
 ErrorCode Server::sendRelayDisabledTemp() {
     return send([]  (Server *communicator, uint8_t relayIndex) {
@@ -576,7 +547,37 @@ ErrorCode Server::saveRelayState() {
     });
 }
 
+ErrorCode Server::sendSwitchData() {
+    sendStartResponse(IDC_SWITCH_DATA);
+    uint32_t *switchData;
+    uint8_t dataCount = RelayController::getSwitchData(&switchData);
+    sendSerial(dataCount);
+    for (uint8_t i = 0; i < dataCount; i++) {
+        sendSerial(switchData[i]);
+    }
+    return OK;
+}
+
+ErrorCode Server::sendContactWaitData() {
+    sendStartResponse(IDC_CONTACT_WAIT_DATA);
+    for (uint8_t i = 0; i < settings.getRelaysCount(); i++) {
+        sendSerial(RelayController::getContactStartWait(i));
+    }
+    return OK;
+}
+
 #else
+
+ErrorCode Server::sendFixData() {
+    sendStartResponse(IDC_FIX_DATA);
+    uint8_t count = settings.getRelaysCount();
+    sendSerial(count);
+    for (uint8_t i = 0; i < count; i++) {
+        sendSerial(RelayController::getFixTryCount(i));
+        sendSerial(RelayController::getFixLastTryTime(i));
+    }
+    return OK;
+}
 
 ErrorCode Server::sendRelayState() {
     uint8_t relayIndex;

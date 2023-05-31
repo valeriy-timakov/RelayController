@@ -25,12 +25,13 @@ public:
     static uint32_t getRemoteTimeStamp() ;
     static void setRemoteTimeStamp(uint32_t remoteTimeStamp);
 #ifdef MEM_32KB
-    static uint8_t getFixTryCount(uint8_t relayIdx);
-    static int32_t getFixLastTryTime(uint8_t relayIdx);
     static uint8_t getSwitchData(uint32_t **data);
     static uint32_t getContactStartWait(uint8_t relayIdx);
 #endif
+    static uint8_t getFixTryCount(uint8_t relayIdx);
+    static uint32_t getFixLastTryTime(uint8_t relayIdx);
     static uint32_t getRemoteTimeSec();
+    static uint32_t totRemoteTimeSec(uint32_t localTimeSec);
 #ifdef MEM_32KB
     static void clearSwitchCount(uint8_t relayIdx);
 #endif
