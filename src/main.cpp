@@ -8,7 +8,7 @@ Server server(data);
 
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(18200);
     delay(100);
     data.load();
     RelayController::setup(data);

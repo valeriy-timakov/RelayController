@@ -176,7 +176,11 @@ struct SwitchLimiter {
 };
 
 SwitchLimiter switchLimiters[MAX_RELAYS_COUNT];
-uint32_t stateSwitchDatas[SWITCHES_DATA_BUFFER_SIZE];
+struct StateSwitchData {
+    uint8_t state;
+    uint32_t time;
+};
+StateSwitchData stateSwitchDatas[SWITCHES_DATA_BUFFER_SIZE];
 uint8_t stateSwitchCount = 0;
 bool lastInterruptPinHigh = false;
 #endif
@@ -235,21 +239,21 @@ void setRelayState_(const RelaySettings &relaySettings, bool switchedOn, uint8_t
     if (setPinSettings.isAllowedPin() && setPinSettings.isEnabled()) {
         writePinStateForse(setPinSettings, switchedOn);
         setLastRelayState(relayIdx, switchedOn);
-        uint32_t switchTimeData = RelayController::getRemoteTimeSec();
-        switchTimeData = (switchTimeData & 0x03ffffff) | (((uint32_t)relayIdx) << 28);
-        if (switchedOn) {
-            switchTimeData |= 1l << 27;
-        }
-        if (internal) {
-            switchTimeData |= 1l << 26;
-        }
-#ifdef MEM_32KB
-        stateSwitchDatas[stateSwitchCount++] = switchTimeData;
-#endif
         stateFixTimes[relayIdx] = getLocalTimeSec();
         stateFixCount[relayIdx] = 0;
-        sendStartSignal(IDC_RELAY_STATE_CHANGED);
-        sendSerial(switchTimeData);
+        uint8_t switchTimeData = 0x0f & relayIdx;
+        if (switchedOn) {
+            switchTimeData |= 0x10;
+        }
+        if (internal) {
+            switchTimeData |= 0x20;
+        }
+        uint32_t time = RelayController::getRemoteTimeSec();
+#ifdef MEM_32KB
+        stateSwitchDatas[stateSwitchCount++].time = switchTimeData;
+        stateSwitchDatas[stateSwitchCount++].state = switchTimeData;
+#endif
+        sendSignal(IDC_RELAY_STATE_CHANGED, switchTimeData, time);
 
     }
 }
@@ -262,14 +266,12 @@ void checkAndFixRelayStates() {
         bool switchedOnByMonitoring = checkPinState(monitoringPinSettings);
         bool lastMonitoringSwithedOn = CHECK_BIT(lastMonitoringState, relayIdx);
         if (switchedOnByMonitoring != lastMonitoringSwithedOn) {
+            setBit(lastMonitoringState, relayIdx, switchedOnByMonitoring);
             uint8_t data = relayIdx & 0xf;
             if (switchedOnByMonitoring) {
                 data |= 0x10;
             }
-            sendStartSignal(IDC_MONITORING_STATE_CHANGED);
-            sendSerial(data);
-            sendSerial(RelayController::getRemoteTimeSec());
-            setBit(lastMonitoringState, relayIdx, switchedOnByMonitoring);
+            sendSignal(IDC_MONITORING_STATE_CHANGED, data, RelayController::getRemoteTimeSec());
         }
         bool switchedOn = getLastRelayState(relayIdx);
         if (
@@ -284,9 +286,11 @@ void checkAndFixRelayStates() {
             writePinStateForse(setPinSettings, switchedOn);
             stateFixTimes[relayIdx] = getLocalTimeSec();
             stateFixCount[relayIdx]++;
-            sendSerial(IDC_STATE_FIX_TRY);
-            sendSerial(relayIdx);
-            sendSerial(stateFixTimes[relayIdx]);
+            uint8_t data = relayIdx & 0xf;
+            if (switchedOn) {
+                data |= 0x10;
+            }
+            sendSignal(IDC_STATE_FIX_TRY, data, stateFixTimes[relayIdx]);
         }
     }
 }
@@ -307,8 +311,6 @@ void checkAndProcessChanges() {
                 && switchLimiters[i].tryAdd()
                 #endif
             ) {
-                sendStartSignal(IDC_CONTROL_STATE_CHANGED);
-                sendSerial((uint8_t)((ctrlPinSet ? 0x10 : 0x00) | (i & 0xf)));
                 if (relaySettings.isControlPinSwitchByPush()) {
                     if (ctrlPinSet) {
                         switchRelayState(relaySettings, i);
@@ -317,6 +319,11 @@ void checkAndProcessChanges() {
                     setRelayState_(relaySettings, ctrlPinSet, i, true);
                 }
                 setLastControlState(i, ctrlPinSet);
+                uint8_t data = i & 0xf;
+                if (ctrlPinSet) {
+                    data |= 0x10;
+                }
+                sendSignal(IDC_CONTROL_STATE_CHANGED, data, RelayController::getRemoteTimeSec());
             }
         }
     }

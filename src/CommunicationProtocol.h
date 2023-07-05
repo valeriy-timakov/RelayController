@@ -69,7 +69,7 @@ enum ErrorCode {
     E_UNDEFINED_CODE = 128
 };
 
-static const int MAX_COMMAND_READ_TIME = 50;
+static const int MAX_COMMAND_READ_TIME = 5;
 
 
 inline size_t sendSerial(bool value, Stream &serial = Serial) {
@@ -150,6 +150,12 @@ inline void sendStartSignal(InstructionDataCode code) {
     sendSerial(IC_NONE);
     sendSerial(IC_SIGNAL);
     sendSerial(code);
+}
+
+inline void sendSignal(InstructionDataCode code, uint8_t data, uint32_t timestamp) {
+    sendStartSignal(code);
+    sendSerial(data);
+    sendSerial(timestamp);
 }
 
 #endif //RELAYCONTROLLER_COMMUNICATIONPROTOCOL_H
