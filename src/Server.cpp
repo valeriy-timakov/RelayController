@@ -596,8 +596,8 @@ ErrorCode Server::saveRelayState() {
     if (res != OK) return res;
     uint8_t relayIndex = cmdData & 0x0f;
     if (relayIndex >= settings.getRelaysCount()) return E_RELAY_INDEX_OUT_OF_RANGE;
-    RelayController::setRelayState(relayIndex, CHECK_BIT(cmdData, 4));
-    RelayController::setControlTemporaryDisabled(relayIndex, CHECK_BIT(cmdData, 4));
+    RelayController::setRelayState(relayIndex, CHECK_BIT(cmdData, 1));
+    RelayController::setControlTemporaryDisabled(relayIndex, CHECK_BIT(cmdData, 2));
     return OK;
 }
 
