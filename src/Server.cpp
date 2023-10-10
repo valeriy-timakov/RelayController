@@ -101,8 +101,11 @@ bool Server::readBinaryCommand() {
         return false;
     }
     if (available > CMD_BUFF_SIZE) {
-        clearSerial();
         sendError(E_COMMAND_SIZE_OVERFLOW);
+        Serial.read();
+        //next byte is instruction code
+        sendSerial((uint8_t)Serial.read());
+        clearSerial();
         return false;
     }
     Serial.readBytes(cmdBuff, available);
@@ -112,11 +115,15 @@ bool Server::readBinaryCommand() {
         commandUnrecognized = true;
     } else {
         uint8_t firstCode = cmdBuff[MAIN_CODE_POSITION];
+#ifdef MEM_32KB
+        commandUnrecognized = firstCode != IC_READ && firstCode != IC_SET && firstCode != IC_COMMAND;
+#else
         commandUnrecognized = firstCode != IC_READ && firstCode != IC_SET;
+#endif
     }
     if (commandUnrecognized) {
-        sendSerial(cmdBuff, cmdBuffSize);
         sendError(E_INSTRUCTION_UNRECOGIZED);
+        sendSerial(cmdBuff[INSTRUCTION_CODE_POSITION]);
         return false;
     }
     commandParsed = true;
@@ -128,6 +135,14 @@ void Server::processBinaryInstruction() {
     uint8_t mainCode = cmdBuff[MAIN_CODE_POSITION];
     cmdBuffCurrPos = INSTRUCTION_DATA_START_CODE_POSITION;
     ErrorCode result;
+#ifdef MEM_32KB
+    uint32_t id;
+    result = readUint32FromCommandBuffer(id);
+    if (result != OK) {
+        sendError(result);
+        return;
+    }
+#endif
     auto code = (InstructionDataCode) cmdBuff[INSTRUCTION_CODE_POSITION];
     switch (mainCode) {
         case IC_READ:
@@ -143,6 +158,14 @@ void Server::processBinaryInstruction() {
                 sendSuccess(code);
             }
             break;
+#ifdef MEM_32KB
+        case IC_COMMAND:
+            result = processBinaryCommand(code);
+            if (result == OK) {
+                sendSuccess(code);
+            }
+            break;
+#endif
         default:
             result = E_INSTRUCTION_UNRECOGIZED;
             break;
@@ -150,6 +173,7 @@ void Server::processBinaryInstruction() {
     if (result != OK) {
         if (result < E_UNDEFINED_CODE) {
             sendError(result);
+            sendSerial(code);
         } else {
             sendSuccess(code, result);
         }
@@ -247,13 +271,19 @@ ErrorCode Server::processBinarySet(InstructionDataCode code) {
             return saveInterruptPin();
         case IDC_SWITCH_COUNTING_SETTINGS:
             return saveSwitchCountingSettings();
-        case IDC_CLEAR_SWITCH_COUNT:
-            return clearSwitchCount();
 #endif
         default:
             return E_UNDEFINED_OPERATION;
     }
 }
+#ifdef MEM_32KB
+ErrorCode Server::processBinaryCommand(InstructionDataCode code) {
+    switch (code) {
+        case IDC_CLEAR_SWITCH_COUNT:
+            return clearSwitchCount();
+    }
+}
+#endif
 
 void Server::sendSettings(bool addResultCode) {
     uint8_t relayCount = settings.getRelaysCount();
@@ -553,14 +583,17 @@ ErrorCode Server::sendSwitchData() {
     uint8_t dataCount = RelayController::getSwitchData(&switchData);
     sendSerial(dataCount);
     for (uint8_t i = 0; i < dataCount; i++) {
-        sendSerial(switchData[i]);
+        sendSerial(switchData[i].state);//u8
+        sendSerial(switchData[i].time);//u32
     }
     return OK;
 }
 
 ErrorCode Server::sendContactWaitData() {
     sendStartResponse(IDC_CONTACT_WAIT_DATA);
-    for (uint8_t i = 0; i < settings.getRelaysCount(); i++) {
+    uint8_t dataCount = settings.getRelaysCount();
+    sendSerial(dataCount);
+    for (uint8_t i = 0; i < dataCount; i++) {
         sendSerial(RelayController::getContactStartWait(i));
     }
     return OK;

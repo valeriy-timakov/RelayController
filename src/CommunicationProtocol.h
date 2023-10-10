@@ -14,6 +14,7 @@ enum InstructionCode {
     IC_ERROR = 0x04,
     IC_SIGNAL = 0x05,
     IC_RESPONSE = 0x06,
+    IC_COMMAND = 0x07,
     IC_UNKNOWN = 0x0f
 };
 
